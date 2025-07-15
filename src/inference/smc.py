@@ -1,12 +1,11 @@
-"""
-Sequential Monte Carlo (SMC) inference engine for tracking Bayesian nonparametric
-channel models with time-varying delay-Doppler taps.
-Each particle represents a hypothesis of active paths and their amplitudes.
-"""
-
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import numpy as np
+import torch
+import copy
+import gpytorch
 from typing import List, Callable, Tuple
-from src.channel_model import DelayDopplerChannel
+from src.models.channel_model import DelayDopplerChannel
 from src.inference.resampling import get_resampler
 
 
@@ -19,10 +18,6 @@ class Particle:
         self.weight = 1.0
 
     def predict(self, time_n: float):
-        """
-        Propagate particle state forward in time (e.g., via GP prior dynamics).
-        """
-        # GP predictions are embedded in the channel.evaluate call.
         return self.channel.evaluate(np.array([time_n]))
 
     def compute_likelihood(self, y_n: complex, x_hist: np.ndarray, noise_var: float, time_n: float) -> float:
@@ -46,49 +41,51 @@ class Particle:
 class SMCFilter:
     def __init__(self, num_particles: int, channel_factory: Callable[[], DelayDopplerChannel], noise_var: float, resample_method: str = "systematic"):
         self.num_particles = num_particles
-        self.particles = [Particle(channel_factory()) for _ in range(num_particles)]
+        self.channel_factory = channel_factory
         self.noise_var = noise_var
         self.resampler = get_resampler(resample_method)
+        self.particles = []  # time-indexed list of particle lists
 
     def initialize(self, train_times: np.ndarray):
-        for p in self.particles:
-            p.channel.sample_paths(train_times)
+        initial_particles = []
+        for _ in range(self.num_particles):
+            channel = self.channel_factory()
+            channel.sample_paths(train_times)
+            initial_particles.append(Particle(channel))
+        self.particles = [initial_particles]  
 
     def step(self, y_n: complex, x_hist: np.ndarray, time_n: float):
+        prev_particles = self.particles[-1]
         weights = []
-        for p in self.particles:
+
+        for p in prev_particles:
             likelihood = p.compute_likelihood(y_n, x_hist, self.noise_var, time_n)
             p.weight *= likelihood
             weights.append(p.weight)
 
-        # Normalize weights
         weights = np.array(weights)
-        weights /= np.sum(weights)
-        for i, p in enumerate(self.particles):
+        total = np.sum(weights)
+        if total == 0 or not np.isfinite(total):
+            weights[:] = 1.0 / len(weights)
+        else:
+            weights /= total
+
+        for i, p in enumerate(prev_particles):
             p.weight = weights[i]
 
-        # Resample
-        self.resample(weights)
-
-    def resample(self, weights):
         indices = self.resampler(weights)
-        new_particles = [self.copy_particle(self.particles[i]) for i in indices]
-        self.particles = new_particles
-        for p in self.particles:
-            p.weight = 1.0 / self.num_particles
+        new_particles = [self.copy_particle(prev_particles[i]) for i in indices]
+
+        self.particles.append(new_particles)
 
     def copy_particle(self, particle: Particle) -> Particle:
-        # Deep copy with new channel instance
-        new_channel = particle.channel  # Placeholder: implement deepcopy if mutation occurs
+        new_channel = copy.deepcopy(particle.channel) 
         return Particle(new_channel)
 
     def estimate_symbol(self, x_hist: np.ndarray, time_n: float) -> Tuple[complex, float]:
-        """
-        Estimate the received symbol (posterior mean) and uncertainty.
-        """
         y_preds = []
         weights = []
-        for p in self.particles:
+        for p in self.particles[-1]:  
             taps = p.channel.evaluate(np.array([time_n]))
             y_hat = 0.0
             for delay, gains in taps:
@@ -99,7 +96,14 @@ class SMCFilter:
             weights.append(p.weight)
 
         weights = np.array(weights)
-        weights /= np.sum(weights)
-        y_mean = np.sum(np.array(y_preds) * weights)
-        y_var = np.sum(np.abs(np.array(y_preds) - y_mean) ** 2 * weights)
+        total = np.sum(weights)
+        if total == 0 or not np.isfinite(total):
+            weights[:] = 1.0 / len(weights)
+        else:
+            weights /= total
+
+        y_preds = np.array(y_preds)
+        y_mean = np.sum(y_preds * weights)
+        print(f"Step {time_n}, y_hat = {y_mean}")
+        y_var = np.sum(np.abs(y_preds - y_mean) ** 2 * weights)
         return y_mean, y_var
