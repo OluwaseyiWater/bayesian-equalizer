@@ -1,9 +1,8 @@
-"""
-Resampling methods for Sequential Monte Carlo (SMC) particle filters.
-Includes multinomial, systematic, and stratified resampling.
-"""
-
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import numpy as np
+import torch
+import gpytorch
 from typing import Callable
 
 
@@ -23,6 +22,7 @@ def systematic_resample(weights: np.ndarray) -> np.ndarray:
     positions = (np.arange(n) + np.random.uniform()) / n
 
     cumulative_sum = np.cumsum(weights)
+    cumulative_sum[-1] = 1.0
     indices = np.zeros(n, dtype=int)
     i, j = 0, 0
     while i < n:
@@ -42,6 +42,7 @@ def stratified_resample(weights: np.ndarray) -> np.ndarray:
     positions = (np.random.rand(n) + np.arange(n)) / n
 
     cumulative_sum = np.cumsum(weights)
+    cumulative_sum[-1] = 1.0
     indices = np.zeros(n, dtype=int)
     i, j = 0, 0
     while i < n:
