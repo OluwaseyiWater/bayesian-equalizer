@@ -1,13 +1,9 @@
-"""
-Run a sweep over number of particles (Np) to evaluate BER and channel MSE,
-and visualize where performance gains saturate (sweet spot).
-"""
-
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import numpy as np
-import os
 from omegaconf import OmegaConf
 from src.inference.smc import SMCFilter
-from src.channel_model import DelayDopplerChannel
+from src.models.channel_model import DelayDopplerChannel
 from src.utils.simulators import generate_symbols, generate_channel_outputs
 from src.utils.metrics import compute_ber
 from src.utils.plotting import plot_multiple_metrics
@@ -88,6 +84,8 @@ if __name__ == '__main__':
         ber, mse = run_smc(cfg, Np, tx_symbols, rx_signal, train_times, true_gains, noise_var)
         ber_list.append(ber)
         mse_list.append(mse)
+
+        print(f"Np = {Np}, BER = {ber:.4f}, MSE = {mse:.4f}")
 
         if cfg.logging.use_wandb:
             log_wandb({"BER": ber, "MSE": mse, "Np": Np})
