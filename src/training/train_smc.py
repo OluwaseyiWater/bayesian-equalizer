@@ -1,13 +1,12 @@
-"""
-Main training/evaluation loop for SMC-based Bayesian nonparametric channel equalizer.
-Generates synthetic data, runs the particle filter, and tracks performance metrics.
-"""
-
-import numpy as np
+import sys
 import os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
+import numpy as np
+import torch
+import gpytorch
 from omegaconf import OmegaConf
 from src.inference.smc import SMCFilter
-from src.channel_model import DelayDopplerChannel
+from src.models.channel_model import DelayDopplerChannel
 from src.utils.simulators import generate_symbols, generate_channel_outputs
 from src.utils.logger import init_wandb, log_wandb, save_csv
 from src.training.evaluate import evaluate_run
