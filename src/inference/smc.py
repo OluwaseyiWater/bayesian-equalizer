@@ -82,6 +82,31 @@ class SMCFilter:
         new_channel = copy.deepcopy(particle.channel) 
         return Particle(new_channel)
 
+    def get_mean_channel_estimate(self, time_n, max_delay_taps):
+        """
+        Calculates the mean channel impulse response estimate from all particles.
+
+        Args:
+            time_n (float): The current time at which to evaluate the gains.
+            max_delay_taps (int): The length of the impulse response vector to create.
+
+        Returns:
+            np.ndarray: The estimated channel impulse response vector, h_hat.
+        """
+        all_h_hats = []
+        current_particles = self.particles[-1]
+
+        for p in current_particles:
+            h_particle = np.zeros(max_delay_taps, dtype=np.complex64)
+            for path in p.channel.paths:
+                delay_tap = int(round(path.delay))
+                if 0 <= delay_tap < max_delay_taps:
+                    gain = path.gain_fn(np.array([time_n]))
+                    h_particle[delay_tap] += gain[0]
+            all_h_hats.append(h_particle)
+        h_hat_mean = np.mean(all_h_hats, axis=0)
+        return h_hat_mean
+
     def estimate_symbol(self, x_hist: np.ndarray, time_n: float) -> Tuple[complex, float]:
         y_preds = []
         weights = []
