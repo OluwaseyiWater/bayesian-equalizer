@@ -1,0 +1,30 @@
+seed: 0
+snr_db: 8.0
+
+channel:
+  type: TV_AR1      # <- new time-varying channel
+  L: 2              # PR1D has 2 taps; we mimic that length
+  rho: 0.9995       # slow drift (coherence ~ 1/(1-rho))
+  q_var: 1.0e-6     # process noise (per symbol)
+
+equalizer:
+  type: rbpf_ca
+  model: matern32           # keep GP novel model (you can start with 'ar1' if you prefer)
+  ell: 80.0
+  sigma_h2: 1.0
+  dt: 1.0
+  q_scale: 0.008
+
+  Np: 1024
+  warmup: 1600
+  ess_thresh: 0.6
+  iterations: 2
+
+  ldpc_k: 8000      # n=16000
+  ldpc_iters: 80
+  alpha: 0.85
+
+  prior_scale: 0.9
+  llr_scale: 1.35
+
+  # (optional) pi_rows: 126  # allow default near-square

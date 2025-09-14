@@ -1,0 +1,17 @@
+seed: 0
+modulation: qpsk
+snr_db: 8.0
+channel: { type: PR1D }
+equalizer:
+  type: mmse_dfe_ca
+  # DFE
+  Lw: 13
+  delay: 1
+  Nb: 1
+  warmup: 800
+  lambda: 0.0
+  iterations: 3       # turbo iterations EQ↔LDPC
+  # LDPC
+  ldpc_k: 8000        # message bits
+  ldpc_dv: 3          # column weight in A
+  ldpc_iters: 50      # BP iters inside decoder

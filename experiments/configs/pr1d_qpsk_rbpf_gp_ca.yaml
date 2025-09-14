@@ -1,0 +1,21 @@
+# experiments/configs/pr1d_qpsk_rbpf_gp_ca.yaml
+seed: 0
+snr_db: 8.0
+channel: { type: PR1D }
+equalizer:
+  type: rbpf_ca
+  model: matern32
+  ell: 100.0
+  sigma_h2: 1.0
+  dt: 1.0
+  q_scale: 0.005
+  Np: 1024
+  warmup: 1600
+  ess_thresh: 0.6
+  iterations: 3
+  ldpc_k: 4000
+  ldpc_iters: 80
+  alpha: 0.85
+  prior_scale: 0.9
+  llr_scale: 1.40
+

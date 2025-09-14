@@ -1,0 +1,12 @@
+
+__pycache__/
+*.pyc
+.env
+.venv
+results/
+figures/
+*.npz
+*.npy
+*.csv
+.DS_Store
+Thumbs.db

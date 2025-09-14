@@ -1,0 +1,18 @@
+# experiments/configs/pr1d_qpsk_rbpf_ar1_ca.yaml
+seed: 0
+snr_db: 8.0
+channel: { type: PR1D }
+equalizer:
+  type: rbpf_ca
+  model: ar1
+  ar_rho: 0.9995
+  q_var: 3.0e-7
+  Np: 512
+  warmup: 1000
+  ess_thresh: 0.7
+  iterations: 2
+  ldpc_k: 4000
+  ldpc_iters: 30
+  alpha: 0.9
+  prior_scale: 0.9
+  llr_scale: 1.1

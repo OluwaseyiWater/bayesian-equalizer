@@ -1,0 +1,15 @@
+seed: 0
+msg_bits: 8000        # message length (before repetition)
+modulation: qpsk
+snr_db: 8.0
+channel:
+  type: PR1D
+equalizer:
+  type: mmse_dfe_ca
+  Lw: 13
+  delay: 1
+  Nb: 1
+  warmup: 500
+  iterations: 2       # try 2–3
+  repeat_R: 3         # repetition factor (rate 1/R)
+  lambda: 0.0

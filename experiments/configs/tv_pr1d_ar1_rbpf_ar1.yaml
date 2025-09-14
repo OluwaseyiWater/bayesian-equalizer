@@ -1,0 +1,20 @@
+seed: 0
+snr_db: 8.0
+channel: { type: TV_AR1, L: 2, rho: 0.9995, q_var: 2.0e-6 }
+
+equalizer:
+  type: rbpf_ca
+  model: ar1
+  ar_rho: 0.9995
+  q_var: 2.0e-6
+  Np: 1536
+  warmup: 2200
+  iterations: 3
+  ess_thresh: 0.6
+  prior_scale: 0.90
+  llr_scale: 1.00
+  calib_max_lag: 6
+  ldpc_k: 8000
+  ldpc_iters: 80
+  ldpc_dv: 3
+  alpha: 0.9

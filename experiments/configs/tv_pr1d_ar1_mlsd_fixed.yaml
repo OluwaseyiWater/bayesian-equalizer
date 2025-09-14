@@ -1,0 +1,13 @@
+seed: 0
+snr_db: 8.0
+
+channel:
+  type: TV_AR1     # time-varying AR(1) taps
+  L: 2
+  rho: 0.9995
+  q_var: 1.0e-6
+
+equalizer:
+  type: mlsd
+  # If you patched the runner to do pilot LS for MLSD, it will use this:
+  warmup: 2000
