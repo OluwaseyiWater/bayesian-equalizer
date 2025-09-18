@@ -1,4 +1,3 @@
-# experiments/configs/pr1d_qpsk_rbpf_gp_ca.yaml
 seed: 0
 snr_db: 8.0
 channel: { type: PR1D }

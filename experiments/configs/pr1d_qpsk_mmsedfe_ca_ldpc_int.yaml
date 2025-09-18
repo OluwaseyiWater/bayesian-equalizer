@@ -14,4 +14,4 @@ equalizer:
   ldpc_dv: 3
   ldpc_iters: 50
   alpha: 0.9
-  pi_rows: 97   # optional; remove to auto-pick near-sqrt
+  pi_rows: 97   

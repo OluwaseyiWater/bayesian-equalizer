@@ -1,4 +1,3 @@
-# channels/time_varying.py
 import numpy as np
 
 def tv_ar1_fir(L=2, rho=0.9995, q_var=1e-6, seed=0):
@@ -27,22 +26,19 @@ def tv_ar1_fir(L=2, rho=0.9995, q_var=1e-6, seed=0):
         xpad = np.pad(x, (L-1, 0), constant_values=0.0+0.0j)
         y = np.zeros(N, dtype=np.complex128)
         for n in range(N):
-            # note: index in xpad is (n+(L-1)-k)
             acc = 0.0 + 0.0j
             for k in range(L):
                 idx = n + (L-1) - k
                 acc += H[n, k] * xpad[idx]
             y[n] = acc
 
-        # set noise to achieve desired Es/N0 (SNR per symbol)
         snr_lin = 10.0**(snr_db/10.0)
         # average per-symbol signal power at channel output (time-varying)
         sig_pow = np.mean(np.abs(y)**2)  # includes channel power drift
-        # we want: snr_lin = (Es * E[|h*x|^2]/Es) / sigma_v2_out  => sigma_v2_out = sig_pow / snr_lin
         noise_var = sig_pow / snr_lin
         v = (rng.standard_normal(N) + 1j*rng.standard_normal(N)) * np.sqrt(noise_var/2.0)
         y_noisy = y + v
 
-        return y_noisy, noise_var, H[0, :].copy()  # return initial taps just for reference
+        return y_noisy, noise_var, H[0, :].copy()  
 
     return channel

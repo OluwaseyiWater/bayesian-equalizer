@@ -1,13 +1,10 @@
-# experiments/sweep_rbpf_gp.py
 import argparse, os, csv, time
 import numpy as np
-
-# --- local imports (match your tree) ---
 import channels.linear_isi as chlin
 from utils.modem import qpsk_mod
 from utils.interleave import make_block_interleaver, interleave, deinterleave
-from channel_codes.ldpc_jax import LDPCJAX as LDPCCode  # or channel_codes.ldpc if you prefer
-from dp_gp.interface import rbpf_detect                  # <-- requires your recent patches
+from channel_codes.ldpc_jax import LDPCJAX as LDPCCode  
+from dp_gp.interface import rbpf_detect                  
 from metrics.ber_fer import ber
 import itertools
 from concurrent.futures import ProcessPoolExecutor, as_completed

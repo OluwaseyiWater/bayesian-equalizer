@@ -1,4 +1,3 @@
-# channel_codes/ldpc.py
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import numpy as np
@@ -14,7 +13,7 @@ API matches what's used in run_experiment.py / sweep_*:
     * L_ext_bits: size n (C->V extrinsic for all code bits)
 """
 
-LLR_MAX = 24.0  # generous clip to avoid NaNs/Infs but keep stability
+LLR_MAX = 24.0 
 
 
 def _clip_arr(a, lim=LLR_MAX, out=None):
@@ -52,7 +51,6 @@ class LDPCCode:
         self.H, self.A = _build_systematic_ldpc(self.k, dv=dv, seed=seed)
         self.alpha_default = float(alpha)
 
-        # adjacency as compact integer arrays (for fast Python loops)
         H = self.H
         self.vars_of_check = [np.nonzero(H[i, :])[0].astype(np.int32) for i in range(self.m)]
         self.checks_of_var = [np.nonzero(H[:, j])[0].astype(np.int32) for j in range(self.n)]
@@ -66,7 +64,6 @@ class LDPCCode:
         m = (np.asarray(msg_bits, dtype=np.uint8) & 1)
         if m.size != self.k:
             raise ValueError(f"LDPC.encode: msg length {m.size} != k={self.k}")
-        # parity
         p = (self.A @ m) & 1
         return np.concatenate([m, p], axis=0).astype(np.uint8)
 
@@ -106,7 +103,6 @@ class LDPCCode:
             raise ValueError(f"decode_extrinsic: L_apriori length {L_a.size} != n={n}")
         _clip_arr(L_a, out=L_a)
 
-        # Initialize messages: dictionaries (check->var) and (var->check) stored sparsely
         L_vc = [{int(ci): float(L_a[j]) for ci in self.checks_of_var[j]} for j in range(n)]
         L_cv = [{int(vj): 0.0 for vj in self.vars_of_check[i]} for i in range(m)]
 

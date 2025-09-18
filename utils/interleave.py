@@ -8,7 +8,7 @@ def make_block_interleaver(n: int, nrows: int | None = None):
     Returns permutation pi of length n such that y = x[pi].
     """
     if nrows is None:
-        nrows = max(2, int(round(np.sqrt(n))))  # near-square by default
+        nrows = max(2, int(round(np.sqrt(n)))) 
     ncols = int(np.ceil(n / nrows))
 
     # fill row-major with indices; pad with -1

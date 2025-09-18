@@ -10,6 +10,6 @@ equalizer:
   delay: 1
   Nb: 1
   warmup: 500
-  iterations: 2       # try 2–3
+  iterations: 2       
   repeat_R: 3         # repetition factor (rate 1/R)
   lambda: 0.0

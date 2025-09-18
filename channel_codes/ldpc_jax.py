@@ -1,4 +1,3 @@
-# channel_codes/ldpc_jax.py
 import sys, os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import numpy as np
@@ -51,8 +50,6 @@ class LDPCJAX:
         self.A = jnp.array(A_np, dtype=jnp.uint8)
 
         self.alpha_default = float(alpha)
-
-        # For message-passing bookkeeping, we still keep adjacency as Python lists of ints
         H = H_np
         self.vars_of_check = [np.nonzero(H[i, :])[0].astype(np.int32) for i in range(self.m)]
         self.checks_of_var = [np.nonzero(H[:, j])[0].astype(np.int32) for j in range(self.n)]
@@ -97,8 +94,6 @@ class LDPCJAX:
             raise ValueError(f"decode_extrinsic: L_apriori length {L_a.size} != n={n}")
         L_a = _clip(L_a)
 
-        # Use Python dictionaries of floats (host) for the messages, like the NumPy version.
-        # We cast to float (host) to keep it simple; this is not performance-critical for your sizes.
         L_a_np = np.asarray(L_a)
 
         L_vc = [{int(ci): float(L_a_np[j]) for ci in self.checks_of_var[j]} for j in range(n)]
@@ -160,5 +155,4 @@ class LDPCJAX:
                     break
 
         L_ext = np.clip(L_post - L_a_np, -LLR_MAX, LLR_MAX)
-        # Return NumPy arrays (callers use NumPy)
         return L_post[:self.k], L_ext

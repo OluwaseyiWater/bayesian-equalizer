@@ -1,5 +1,5 @@
 import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))  # keep this if you want to run the file directly
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import numpy as np
 from itertools import product
 

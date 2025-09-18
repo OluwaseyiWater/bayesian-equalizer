@@ -35,11 +35,11 @@ def zf_dfe_design(h, Lw=7, delay=None, reg=0.0):
     h = np.asarray(h, dtype=np.complex128)
     Lh = len(h)
     if delay is None:
-        delay = min(Lw-1, Lh-1)  # put main tap within span
-    C = _convmtx(h, Lw)                       # (Lg x Lw)
+        delay = min(Lw-1, Lh-1)  
+    C = _convmtx(h, Lw)                      
     Lg = C.shape[0]
     t = np.zeros(Lg, dtype=np.complex128)
-    t[delay] = 1.0                            # delta target
+    t[delay] = 1.0                            
     # Regularized LS for numerical stability (reg=0 => plain LS)
     if reg > 0:
         w = np.linalg.solve(C.conj().T @ C + reg*np.eye(Lw), C.conj().T @ t)
@@ -57,9 +57,9 @@ def zf_dfe_detect(y, w, b, delay, slicer):
     s_hat = np.zeros(N, dtype=np.complex128)
     for n in range(N):
         fb = 0.0 + 0.0j
-        kmax = min(Nb, n)           # only use symbols we’ve already decided
+        kmax = min(Nb, n)          
         if kmax > 0:
-            past = s_hat[n-kmax:n][::-1]   # [s[n-1], s[n-2], ...]
+            past = s_hat[n-kmax:n][::-1]   
             fb = np.dot(b[:kmax], past)
         s_hat[n] = slicer(pre[n] + fb)
     return pre, s_hat

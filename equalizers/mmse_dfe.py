@@ -50,7 +50,6 @@ def mmse_dfe_design(h, noise_var, Lw=9, Nb=None, delay=None, post_thresh=1e-3):
     C = _convmtx(h, Lw)
     g = C @ w  # len Lh+Lw-1
 
-    # Choose Nb adaptively if not provided (cancel significant postcursors)
     post_full = g[delay+1:]
     if Nb is None:
         sig = np.where(np.abs(post_full) > post_thresh)[0]
@@ -58,7 +57,7 @@ def mmse_dfe_design(h, noise_var, Lw=9, Nb=None, delay=None, post_thresh=1e-3):
     post = post_full[:Nb]
     b = -post.copy()
 
-    # Normalize so main tap is 1
+    
     main = g[delay] if g[delay] != 0 else 1.0
     w /= main; b /= main; g /= main
     return w, b, delay, g
@@ -92,7 +91,6 @@ def mmse_dfe_detect(y, w, b, delay, slicer, s_true=None, warmup=0, gate_tau=None
     pre_fb = np.empty(N, dtype=np.complex128)
 
     for n in range(N):
-        # choose FB source
         use_true = (s_true is not None) and (n < warmup)
         kmax = min(Nb, n)
 
@@ -103,7 +101,6 @@ def mmse_dfe_detect(y, w, b, delay, slicer, s_true=None, warmup=0, gate_tau=None
                 past = soft_seq[n-kmax:n][::-1]
             else:
                 past = s_hat[n-kmax:n][::-1]
-            # optional reliability gate only for DD
             if (not use_true) and (soft_seq is None) and (gate_tau is not None) and (n > 0):
                 kprev = min(Nb, n-1)
                 if kprev > 0:
@@ -143,7 +140,7 @@ def mmse_dfe_design_train(y, s_true, Lw=11, Nb=1, delay=1, lam=0.0):
 
     rows = []
     targets = []
-    start = max(delay, 1)  # need at least one past symbol if Nb>0
+    start = max(delay, 1)  #if Nb>0
     for n in range(start, N):
         idx = n + delay + pad_left
         y_vec = ypad[idx - np.arange(Lw)]

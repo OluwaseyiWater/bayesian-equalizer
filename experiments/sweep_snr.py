@@ -1,6 +1,5 @@
-# experiments/sweep_snr.py
 import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))  # repo root
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))  
 
 import math, numpy as np, csv, matplotlib.pyplot as plt
 
@@ -15,7 +14,6 @@ from equalizers.mmse_dfe import mmse_dfe_detect, mmse_dfe_design_train
 from baselines.mlsd_viterbi.viterbi import viterbi_mlsd
 from utils.llr import qpsk_llrs, soft_symbol_from_llrs
 from utils.interleave import make_block_interleaver, interleave, deinterleave
-#from channel_codes.ldpc import LDPCCode
 from channel_codes.ldpc_jax import LDPCJAX as LDPCCode
 from channel_codes.ldpc_jax import LLR_MAX
 
@@ -87,7 +85,6 @@ def ebn0_offset_db(mod_bits=2, rate=0.5):
     return -10.0 * np.log10(k)
 
 def annotate_ebn0(ax, offset_db, which='bottom'):
-    # If offset_db==0, Eb/N0==Es/N0; otherwise mention offset in title.
     if abs(offset_db) < 1e-6:
         ax.set_xlabel("SNR (Es/N0) [dB]  =  Eb/N0 [dB] (QPSK, R=1/2)")
     else:

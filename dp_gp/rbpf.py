@@ -1,4 +1,3 @@
-# dp_gp/rbpf.py
 import numpy as np
 from .ssm import build_state_model, predict, update
 
@@ -42,7 +41,7 @@ class RBPF:
         # QPSK symbols (Gray mapping): (+,+), (+,-), (-,+), (-,-)
         self.syms = np.array([(1+1j), (1-1j), (-1+1j), (-1-1j)], dtype=np.complex128) / SQRT2
 
-        # Build linear-Gaussian state model and regressor expander
+        #linear-Gaussian state model and regressor expander
         self.F, self.Q, self.state_dim, self.expand_phi = build_state_model(
             model, self.L, **(model_kwargs or {})
         )

@@ -1,4 +1,3 @@
-# experiments/configs/pr1d_qpsk_rbpf_gp_ca.yaml
 seed: 0
 snr_db: 8.0
 channel: { type: PR1D }
@@ -9,7 +8,7 @@ equalizer:
   sigma_h2: 1.0
   dt: 1.0
   q_scale: 0.005
-  Np: 768            # bump to 1024 if ESS collapses
+  Np: 768            
   warmup: 2000
   ess_thresh: 0.6
   iterations: 3

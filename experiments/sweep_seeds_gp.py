@@ -1,8 +1,5 @@
-# experiments/sweep_seeds_gp.py
 import os, sys, argparse, csv, time, yaml
 import numpy as np
-
-# repo-local imports
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from utils.modem import qpsk_mod
@@ -12,7 +9,7 @@ from metrics.ber_fer import ber
 from metrics.snrr_mfb import matched_filter_bound, snr_receiver
 from dp_gp.interface import rbpf_detect
 
-# Prefer JAX LDPC if available
+# Prefer JAX LDPC
 try:
     from channel_codes.ldpc_jax import LDPCJAX as LDPCCode
 except Exception:
@@ -72,7 +69,7 @@ def run_once(cfg, seed, code_seed):
 
     rng = np.random.default_rng(seed)
 
-    # Code, interleaver, mapping (HOLD GRAPH FIXED across seeds)
+    # Code, interleaver, mapping 
     code = LDPCCode(k=k, dv=dv, seed=code_seed, alpha=alpha)
     bits_msg   = rng.integers(0, 2, size=k, dtype=int)
     bits_coded = code.encode(bits_msg)                 # n = 2k
@@ -94,7 +91,7 @@ def run_once(cfg, seed, code_seed):
     L_ext_eq_last = None
 
     for t in range(iters):
-        # DEC -> EQ prior (interleaved) with optional damping & clip (keep moderate)
+        # DEC -> EQ prior (interleaved) with optional damping & clip
         apriori_eq = interleave(apriori_code, pi) * prior_scale
         np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
 
@@ -132,8 +129,8 @@ def run_once(cfg, seed, code_seed):
 
         L_ext_eq_last = L_ext_eq
 
-    # Final decode (do the same normalization)
-    if L_ext_eq_last is None:  # iters == 0 fallback
+    # Final decode
+    if L_ext_eq_last is None:  
         apriori_eq = interleave(apriori_code, pi) * prior_scale
         np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
         L_ext_eq_last, soft_seq, _ = rbpf_detect(
@@ -192,7 +189,6 @@ def main():
         rows.append(rec)
         print(f"[{len(rows)}/{args.seeds}] seed={s} -> BER={rec['ber']:.5f} | SNR_R={rec['snr_R_lin_db']:.2f} dB")
 
-    # aggregate stats
     bers = np.array([r['ber'] for r in rows], dtype=float)
     mean_ber = float(bers.mean())
     std_ber  = float(bers.std(ddof=1)) if len(bers) > 1 else 0.0
@@ -206,7 +202,6 @@ def main():
     with open(args.out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
         w.writeheader(); w.writerows(rows)
-        # add one-line summary footer
         f.write(f"# mean_ber,{mean_ber}\n")
         f.write(f"# std_ber,{std_ber}\n")
 

@@ -4,7 +4,7 @@ import numpy as np
 
 def _channel_autocorr(h, maxlag):
     h = np.asarray(h, dtype=np.complex128)
-    r_full = np.convolve(h, np.conj(h[::-1]))                # lags = -(Lh-1) .. +(Lh-1)
+    r_full = np.convolve(h, np.conj(h[::-1]))                
     Lh = len(h); center = Lh - 1
     out = []
     for lag in range(-maxlag, maxlag+1):
@@ -21,9 +21,9 @@ def mmse_le_design(h, noise_var, Lw=7, delay=None):
     h = np.asarray(h, dtype=np.complex128)
     Lh = len(h)
     if delay is None:
-        delay = min(Lw-1, Lh-1)  # put main tap inside the window
+        delay = min(Lw-1, Lh-1)  
     maxlag = Lw - 1
-    rvec = _channel_autocorr(h, maxlag)                      # length 2*Lw-1
+    rvec = _channel_autocorr(h, maxlag)            # length 2*Lw-1
     # Ryy Toeplitz
     R = np.empty((Lw, Lw), dtype=np.complex128)
     for i in range(Lw):
@@ -54,8 +54,8 @@ def mmse_le_apply(y, w, delay):
     pre = np.empty(N, dtype=np.complex128)
     for n in range(N):
         idx = n + delay + pad_left
-        vec = ypad[idx - np.arange(Lw)]   # [y[idx], y[idx-1], ..., y[idx-Lw+1]]
-        pre[n] = np.vdot(w, vec)          # w^H * vec
+        vec = ypad[idx - np.arange(Lw)]   
+        pre[n] = np.vdot(w, vec)         
     return pre
 
 def mmse_le(y, h, noise_var, Lw=7, delay=None):

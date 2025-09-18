@@ -9,5 +9,5 @@ channel:
 
 equalizer:
   type: mlsd
-  # If you patched the runner to do pilot LS for MLSD, it will use this:
+  # runner pilot LS for MLSD
   warmup: 2000

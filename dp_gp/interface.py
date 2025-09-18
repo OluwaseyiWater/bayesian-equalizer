@@ -1,4 +1,3 @@
-# dp_gp/interface.py
 import numpy as np
 import inspect
 from dp_gp.rbpf import RBPF
@@ -23,7 +22,6 @@ def _call_with_signature(obj, method_name, base_kwargs):
     func = getattr(obj, method_name)
     sig_params = set(inspect.signature(func).parameters.keys())
 
-    # Start with kwargs that the method actually accepts
     kwargs = {k: v for k, v in base_kwargs.items() if k in sig_params}
 
     # Alias mapping when the method uses different names
@@ -84,7 +82,7 @@ def rbpf_detect(
             L_ext_eq, soft_seq, aux = _normalize_outputs(ret)
             return L_ext_eq, soft_seq, aux
 
-    # Helpful error listing callables
+    # error listing callables
     callables = [n for n in dir(rbpf) if callable(getattr(rbpf, n)) and not n.startswith("_")]
     raise AttributeError(
         "RBPF object has no method 'detect', 'run', or 'infer'. "

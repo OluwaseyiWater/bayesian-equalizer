@@ -1,4 +1,3 @@
-# dp_gp/ssm.py
 import numpy as np
 
 # ---------- AR(1) on each tap ----------
@@ -69,7 +68,7 @@ def matern32_ar2_params(L: int, ell: float, sigma_h2: float, dt: float = 1.0):
         sl = slice(2*k, 2*k+2)
         F[sl, sl] = Ftap
         Q[sl, sl] = Qtap
-    return F, Q, state_dim, rho  # returning rho can be useful for init
+    return F, Q, state_dim, rho  
 
 
 def build_state_model(kind: str, L: int, **kwargs):

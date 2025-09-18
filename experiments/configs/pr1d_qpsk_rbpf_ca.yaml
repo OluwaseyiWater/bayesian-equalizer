@@ -7,10 +7,10 @@ equalizer:
   model: ar1
   llr_scale: 1.1
   # RBPF
-  Np: 512           # ↑ particles
+  Np: 512           #  particles
   ar_rho: 0.9995     # quasi-static taps
   q_var: 3.0e-7     # tiny drift
-  warmup: 1000       # more confident start
+  warmup: 1000       
   ess_thresh: 0.7
   iterations: 3     # turbo iters
   # LDPC + interleaver
@@ -18,4 +18,4 @@ equalizer:
   ldpc_dv: 3
   ldpc_iters: 80
   alpha: 0.9
-  pi_rows: 97    # optional; omit to auto near-sqrt
+  pi_rows: 97    
