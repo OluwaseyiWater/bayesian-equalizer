@@ -1,25 +1,31 @@
 seed: 0
+modulation: qpsk
 snr_db: 8.0
-channel: { type: TV_AR1, L: 2, rho: 0.9995, q_var: 1.0e-6 }
+
+channel:
+  type: TV_AR1
+  L: 2
+  rho: 0.9995
+  q_var: 1.0e-6
 
 equalizer:
   type: rbpf_ca
   model: ar1
-  ar_rho: 0.999
+  ar_rho: 0.9995
   q_var: 1.0e-6
 
-  Np: 1536
-  warmup: 1200
-  iterations: 3
+  # Particle filter
+  Np: 2048
   ess_thresh: 0.7
+  warmup: 1200
+  iterations: 4
+  calib_max_lag: 8
 
-  prior_scale: 1.0
-  llr_scale: 1.0
-  target_std: 1.6
-  llr_clip: 7.5
-
+  # Turbo schedule knobs
   ldpc_k: 8000
   ldpc_dv: 3
-  ldpc_iters: 80
-  alpha: 0.9
+  ldpc_iters: 120
 
+  # LLR coupling
+  prior_scale: 0.85   # DEC->EQ damping
+  llr_scale: 1.10     # EQ->DEC global gain

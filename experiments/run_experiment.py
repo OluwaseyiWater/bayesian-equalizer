@@ -230,29 +230,30 @@ def main():
         else:
             raise ValueError(f"Unknown RBPF state model '{model}'")
 
-        # soft LLR knobs
+        # LLR knobs
         prior_scale = float(eq_cfg.get('prior_scale', 1.0))  # DEC->EQ damping
         llr_scale   = float(eq_cfg.get('llr_scale',   1.0))  # EQ->DEC scaling
 
-        # RBPF channel length
+        # Channel memory used by RBPF
         Lch = len(h) if h is not None else int(ch_cfg.get('L', 2))
 
         # --- Turbo EQ <-> LDPC (EXTRINSIC schedule) ---
-        apriori_code  = np.zeros(n, dtype=float)
+        apriori_code  = np.zeros(n, dtype=float)      # decoder-domain
         L_ext_eq_last = None
-        soft_seq = np.zeros_like(x, dtype=np.complex128)
+        soft_seq      = np.zeros_like(x, dtype=np.complex128)
 
-        # pilots (EQ domain)
+        # Pilots in EQ domain (first 2*warm coded bits)
         pilot_bits_eq = bits_tx[: 2*warm] if warm > 0 else None
         max_lag = int(eq_cfg.get('calib_max_lag', 6))
         did_delay_align = False
+        did_lane_sign   = False
 
         for t in range(iters):
-            # DEC -> EQ prior (damped & clipped)
+            # DEC -> EQ prior (interleaved), damp & clip
             apriori_eq = interleave(apriori_code, pi) * prior_scale
             np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
 
-            # RBPF pass
+            # RBPF pass (returns POSTERIOR LLRs in EQ domain per your RBPF impl)
             L_ext_eq, soft_seq, aux = rbpf_detect(
                 y=y, L=Lch, sigma_v2=noise_var,
                 Np=Np, model=model, model_kwargs=model_kwargs,
@@ -261,64 +262,98 @@ def main():
                 ess_thresh=ess_thr, seed=cfg.get('seed', 0)
             )
 
-            # -------- Robust pilot alignment (delay only, first pass) --------
-            if (t == 0) and (warm > 0) and (not did_delay_align):
-                # integer symbol delay via soft-symbol correlation on pilots
-                xp = x[:warm]                 # known pilot symbols
-                sp = soft_seq[:warm]          # RBPF soft symbols on pilot span
-                max_lag_sym = min(max_lag, warm - 1)
-                best_d, best_score = 0, -1e18
-                for d in range(-max_lag_sym, max_lag_sym + 1):
-                    if d >= 0:
-                        s_sub = sp[d:warm]
-                        x_sub = xp[: warm - d]
-                    else:
-                        s_sub = sp[: warm + d]
-                        x_sub = xp[-d:warm]
-                    if len(s_sub) == 0:
-                        continue
-                    score = float(np.real(np.vdot(x_sub, s_sub)))
-                    if score > best_score:
-                        best_score, best_d = score, d
-                if best_d != 0:
-                    L_ext_eq = np.roll(L_ext_eq, 2 * best_d)  # 2 bits / QPSK symbol
-                    soft_seq = np.roll(soft_seq, best_d)
+            # Always convert POSTERIOR -> EXTRINSIC in EQ domain
+            # (RBPF consumed priors internally to form its posterior)
+            L_ext_eq = L_ext_eq - apriori_eq
+
+            # -------- Pilot-based calibration ONLY on first iteration --------
+            if (t == 0) and (warm > 0):
+                # 1) Integer symbol delay (align soft_seq vs. pilot symbols)
+                if not did_delay_align:
+                    xp = x[:warm]                 # known pilot symbols
+                    sp = soft_seq[:warm]          # RBPF soft symbols on pilot span
+                    max_lag_sym = min(max_lag, warm - 1)
+                    best_d, best_score = 0, -1e18
+                    for d in range(-max_lag_sym, max_lag_sym + 1):
+                        if d >= 0:
+                            s_sub = sp[d:warm]
+                            x_sub = xp[: warm - d]
+                        else:
+                            s_sub = sp[: warm + d]
+                            x_sub = xp[-d:warm]
+                        if len(s_sub) == 0:
+                            continue
+                        score = float(np.real(np.vdot(x_sub, s_sub)))
+                        if score > best_score:
+                            best_score, best_d = score, d
+                    if best_d != 0:
+                        # shift both LLRs (bits) and soft symbols (symbols)
+                        L_ext_eq = np.roll(L_ext_eq, 2 * best_d)  # QPSK: 2 bits/symbol
+                        soft_seq = np.roll(soft_seq, best_d)
                     print(f"[calib] Aligned delay: d={best_d:+d} symbols (score={best_score:.3f}).")
-                did_delay_align = True
+                    did_delay_align = True
 
-                # pilot-lane agreement diagnostic after delay
-                if warm > 0:
-                    pb  = pilot_bits_eq.astype(float)
-                    sI  = 1.0 - 2.0 * pb[0::2]
-                    sQ  = 1.0 - 2.0 * pb[1::2]
-                    Lp  = L_ext_eq[: 2*warm].astype(float)
-                    scI = float(np.mean(Lp[0::2]*sI))
-                    scQ = float(np.mean(Lp[1::2]*sQ))
-                    print(f"[calib] Pilot agreement after fix: I={scI:.3f}, Q={scQ:.3f}.")
+                # 2) 8-way lane/sign search (swap × flipI × flipQ) on pilot window
+                if not did_lane_sign:
+                    pb = pilot_bits_eq.astype(float)        # ground-truth pilot bits (EQ order)
+                    sI = 1.0 - 2.0 * pb[0::2]               # +1 for bit 0, -1 for bit 1
+                    sQ = 1.0 - 2.0 * pb[1::2]
+                    Lp = L_ext_eq[: 2*warm].astype(float)   # current EQ-domain extrinsic on pilots
 
-            # --- Posterior->extrinsic correction if RBPF returned posterior ---
-            if warm > 0:
+                    def score_combo(L_bits, swap, flipI, flipQ):
+                        Le = L_bits[0::2].copy()
+                        Lo = L_bits[1::2].copy()
+                        if swap:
+                            Le, Lo = Lo, Le
+                        if flipI:
+                            Le *= -1.0
+                        if flipQ:
+                            Lo *= -1.0
+                        return float(np.mean(Le * sI) + np.mean(Lo * sQ))
+
+                    best = (-1e18, False, False, False)
+                    for swap in (False, True):
+                        for flipI in (False, True):
+                            for flipQ in (False, True):
+                                sc = score_combo(Lp, swap, flipI, flipQ)
+                                if sc > best[0]:
+                                    best = (sc, swap, flipI, flipQ)
+
+                    _, swap, flipI, flipQ = best
+                    # Apply best transform to FULL LLR vector
+                    Le = L_ext_eq[0::2].copy()
+                    Lo = L_ext_eq[1::2].copy()
+                    if swap:
+                        Le, Lo = Lo, Le
+                        print("[calib] Swapped I/Q lanes.")
+                    if flipI:
+                        Le *= -1.0
+                        print("[calib] Flipped I-lane sign.")
+                    if flipQ:
+                        Lo *= -1.0
+                        print("[calib] Flipped Q-lane sign.")
+                    L_ext_eq[0::2] = Le
+                    L_ext_eq[1::2] = Lo
+                    did_lane_sign = True
+
+                # Pilot-agreement diagnostic after both delay & lane/sign fixes
                 pb  = pilot_bits_eq.astype(float)
                 sI  = 1.0 - 2.0 * pb[0::2]
                 sQ  = 1.0 - 2.0 * pb[1::2]
-                Lp_cur = L_ext_eq[: 2*warm].astype(float)
-                sc_cur = float(np.mean(Lp_cur[0::2]*sI) + np.mean(Lp_cur[1::2]*sQ))
-                apr_eq = apriori_eq[: 2*warm].astype(float)
-                Lp_try = (Lp_cur - apr_eq)
-                sc_try = float(np.mean(Lp_try[0::2]*sI) + np.mean(Lp_try[1::2]*sQ))
-                if sc_try > sc_cur + 1e-6:
-                    L_ext_eq = L_ext_eq - apriori_eq
-                    print(f"[rbpf] Using posterior->extrinsic correction (pilot score {sc_try:.3f} > {sc_cur:.3f}).")
+                LpF = L_ext_eq[: 2*warm].astype(float)
+                scI = float(np.mean(LpF[0::2]*sI))
+                scQ = float(np.mean(LpF[1::2]*sQ))
+                print(f"[calib] Pilot agreement after fix: I={scI:.3f}, Q={scQ:.3f}.")
 
-            # pilot BER diagnostic after calibration
-            if t == 0 and warm > 0:
-                Lp_bits = (L_ext_eq[: 2*warm] < 0).astype(int)
+                # Pilot BER diagnostic (EQ-domain, extrinsic)
+                Lp_bits = (LpF < 0).astype(int)
                 pber = float(np.mean(Lp_bits != bits_tx[: 2*warm]))
                 print(f"[diag] Pilot bit-error rate (EQ-domain): {pber:.3f}")
 
+            # Save last EQ-domain extrinsic
             L_ext_eq_last = L_ext_eq
 
-            # EQ -> DEC: deinterleave, normalize, scale, clip (stronger than 1.6/±7.5)
+            # EQ -> DEC: deinterleave, normalize, scale, clip
             L_ext_dec = deinterleave(L_ext_eq, pi)
             std0 = float(np.std(L_ext_dec)) + 1e-9
             target_std = 2.2
@@ -336,13 +371,13 @@ def main():
                 print(f"[health] iter2: L_ext_dec std={np.std(L_ext_dec):.2f}, "
                       f"min/max={L_ext_dec.min():.2f}/{L_ext_dec.max():.2f}")
 
-            # LDPC: DEC a-posteriori, return extrinsic
+            # LDPC: DEC a-posteriori, return extrinsic for next pass
             L_post_dec = L_ext_dec + apriori_code
             L_msg_post, apriori_code = code.decode_extrinsic(
                 L_post_dec, iters=ldpc_it, mode="nms", alpha=0.85, damping=0.0, early_stop=True
             )
 
-        # ---- Final LDPC decode----
+        # ---- Final LDPC decode (normalize the same way) ----
         if L_ext_eq_last is None:
             apriori_eq = interleave(apriori_code, pi) * prior_scale
             np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
@@ -353,6 +388,8 @@ def main():
                 pilot_sym=x, pilot_len=warm,
                 ess_thresh=ess_thr, seed=cfg.get('seed', 0)
             )
+            # convert posterior -> extrinsic
+            L_ext_eq_last = L_ext_eq_last - apriori_eq
 
         L_post_dec = deinterleave(L_ext_eq_last, pi)
         std0 = float(np.std(L_post_dec)) + 1e-9
@@ -369,9 +406,10 @@ def main():
         bits_msg_hat = (L_msg_post < 0).astype(int)
 
         # hand results to unified metrics/prints
-        bits_to_check      = bits_msg
-        bits_hat_to_check  = bits_msg_hat
+        bits_to_check     = bits_msg
+        bits_hat_to_check = bits_msg_hat
         pre_slicer_signal_for_snr = soft_seq
+
 
     else:
         raise NotImplementedError(f'Unknown equalizer type {eq_type}')

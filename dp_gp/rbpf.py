@@ -129,8 +129,10 @@ class RBPF:
 
             # 3) Per-particle, per-symbol likelihoods p(y_n | s, particle i)
             like_i_s = np.zeros((self.Np, 4), dtype=float)
-            temp = 0.9  # 1.0 = off; 0.9 is gentle
-            like_i_s **= temp
+            temp = 1.0 
+            # if temp != 1.0:
+            like_i_s = like_i_s ** temp
+
 
             for i in range(self.Np):
                 # Pre-compute the ISI regressor base (depends on mem[i])
@@ -181,9 +183,11 @@ class RBPF:
 
             # 7) MAP symbol advance per particle (low-variance), then KF update
             for i in range(self.Np):
-                # Choose s that maximizes like_i_s[i, s] * p_s[s]
-                s_idx = int(np.argmax(like_i_s[i] * p_s))
+                p_i = like_i_s[i] * p_s
+                p_i /= (p_i.sum() + 1e-300)
+                s_idx = self.rng.choice(4, p=p_i)
                 s = self.syms[s_idx]
+
 
                 # Measurement vector for chosen s
                 if L > 0:
