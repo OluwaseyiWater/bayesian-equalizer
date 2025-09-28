@@ -238,23 +238,34 @@ def main():
         Lch = len(h) if h is not None else int(ch_cfg.get('L', 2))
 
         # --- Turbo EQ <-> LDPC (EXTRINSIC schedule) ---
-        apriori_code  = np.zeros(n, dtype=float)      # decoder-domain
-        L_ext_eq_last = None
-        soft_seq      = np.zeros_like(x, dtype=np.complex128)
+        apriori_code  = np.zeros(n, dtype=float)      # decoder-domain (coded)
+        L_extr_eq_last = None
+        soft_seq       = np.zeros_like(x, dtype=np.complex128)
 
-        # Pilots in EQ domain (first 2*warm coded bits)
-        pilot_bits_eq = bits_tx[: 2*warm] if warm > 0 else None
+        # Pilots (EQ-domain) and helpers
+        have_pilots    = (warm > 0)
+        pilot_bits_eq  = bits_tx[: 2*warm] if have_pilots else None
+        if have_pilots:
+            pb = pilot_bits_eq.astype(float)
+            sI = 1.0 - 2.0 * pb[0::2]
+            sQ = 1.0 - 2.0 * pb[1::2]
         max_lag = int(eq_cfg.get('calib_max_lag', 6))
-        did_delay_align = False
-        did_lane_sign   = False
+
+        did_calibrate  = False
+        # Lane/sign transform to reuse after t==0
+        lane_swap = False
+        signI     = 1.0
+        signQ     = 1.0
+        delay_sym = 0
+        ldpc_it_fast = min(20, ldpc_it)
 
         for t in range(iters):
-            # DEC -> EQ prior (interleaved), damp & clip
+            # Build decoder a-priori in EQ order (one time per pass)
             apriori_eq = interleave(apriori_code, pi) * prior_scale
             np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
 
-            # RBPF pass (returns POSTERIOR LLRs in EQ domain per your RBPF impl)
-            L_ext_eq, soft_seq, aux = rbpf_detect(
+            # ---- RBPF forward pass: POSTERIOR LLRs (EQ order) ----
+            L_post_eq, soft_seq, aux = rbpf_detect(
                 y=y, L=Lch, sigma_v2=noise_var,
                 Np=Np, model=model, model_kwargs=model_kwargs,
                 apriori_llr_bits=apriori_eq,
@@ -262,107 +273,105 @@ def main():
                 ess_thresh=ess_thr, seed=cfg.get('seed', 0)
             )
 
-            # Always convert POSTERIOR -> EXTRINSIC in EQ domain
-            # (RBPF consumed priors internally to form its posterior)
-            L_ext_eq = L_ext_eq - apriori_eq
+            # -------- Pilot calibration ONCE at t==0 (on POSTERIOR) --------
+            if (t == 0) and have_pilots and (not did_calibrate):
+                # 1) Delay search using soft symbols on the pilot span
+                xp = x[:warm]; sp = soft_seq[:warm]
+                max_lag_sym = min(max_lag, warm - 1)
+                best_d, best_score = 0, -1e18
+                for d in range(-max_lag_sym, max_lag_sym + 1):
+                    if d >= 0:
+                        s_sub = sp[d:warm]; x_sub = xp[: warm - d]
+                    else:
+                        s_sub = sp[: warm + d]; x_sub = xp[-d:warm]
+                    if len(s_sub) == 0: 
+                        continue
+                    score = float(np.real(np.vdot(x_sub, s_sub)))
+                    if score > best_score:
+                        best_score, best_d = score, d
+                delay_sym = best_d
+                if delay_sym != 0:
+                    soft_seq  = np.roll(soft_seq, delay_sym)
+                    L_post_eq = np.roll(L_post_eq, 2 * delay_sym)  # 2 bits per QPSK
+                    print(f"[calib] Aligned delay: d={delay_sym:+d} symbols (score={best_score:.3f}).")
 
-            # -------- Pilot-based calibration ONLY on first iteration --------
-            if (t == 0) and (warm > 0):
-                # 1) Integer symbol delay (align soft_seq vs. pilot symbols)
-                if not did_delay_align:
-                    xp = x[:warm]                 # known pilot symbols
-                    sp = soft_seq[:warm]          # RBPF soft symbols on pilot span
-                    max_lag_sym = min(max_lag, warm - 1)
-                    best_d, best_score = 0, -1e18
-                    for d in range(-max_lag_sym, max_lag_sym + 1):
-                        if d >= 0:
-                            s_sub = sp[d:warm]
-                            x_sub = xp[: warm - d]
-                        else:
-                            s_sub = sp[: warm + d]
-                            x_sub = xp[-d:warm]
-                        if len(s_sub) == 0:
-                            continue
-                        score = float(np.real(np.vdot(x_sub, s_sub)))
-                        if score > best_score:
-                            best_score, best_d = score, d
-                    if best_d != 0:
-                        # shift both LLRs (bits) and soft symbols (symbols)
-                        L_ext_eq = np.roll(L_ext_eq, 2 * best_d)  # QPSK: 2 bits/symbol
-                        soft_seq = np.roll(soft_seq, best_d)
-                    print(f"[calib] Aligned delay: d={best_d:+d} symbols (score={best_score:.3f}).")
-                    did_delay_align = True
+                # 2) 8-way lane/sign search on POSTERIOR pilot LLRs (EQ order)
+                Lp = L_post_eq[: 2*warm].astype(float)
 
-                # 2) 8-way lane/sign search (swap × flipI × flipQ) on pilot window
-                if not did_lane_sign:
-                    pb = pilot_bits_eq.astype(float)        # ground-truth pilot bits (EQ order)
-                    sI = 1.0 - 2.0 * pb[0::2]               # +1 for bit 0, -1 for bit 1
-                    sQ = 1.0 - 2.0 * pb[1::2]
-                    Lp = L_ext_eq[: 2*warm].astype(float)   # current EQ-domain extrinsic on pilots
+                def score_combo(Lpilot, swap, flipI, flipQ):
+                    Le = Lpilot[0::2].copy(); Lo = Lpilot[1::2].copy()
+                    if swap:  Le, Lo = Lo, Le
+                    if flipI: Le *= -1.0
+                    if flipQ: Lo *= -1.0
+                    return float(np.mean(Le * sI) + np.mean(Lo * sQ))
 
-                    def score_combo(L_bits, swap, flipI, flipQ):
-                        Le = L_bits[0::2].copy()
-                        Lo = L_bits[1::2].copy()
-                        if swap:
-                            Le, Lo = Lo, Le
-                        if flipI:
-                            Le *= -1.0
-                        if flipQ:
-                            Lo *= -1.0
-                        return float(np.mean(Le * sI) + np.mean(Lo * sQ))
+                best = (-1e18, False, False, False)
+                for swap in (False, True):
+                    for flipI in (False, True):
+                        for flipQ in (False, True):
+                            sc = score_combo(Lp, swap, flipI, flipQ)
+                            if sc > best[0]:
+                                best = (sc, swap, flipI, flipQ)
 
-                    best = (-1e18, False, False, False)
-                    for swap in (False, True):
-                        for flipI in (False, True):
-                            for flipQ in (False, True):
-                                sc = score_combo(Lp, swap, flipI, flipQ)
-                                if sc > best[0]:
-                                    best = (sc, swap, flipI, flipQ)
+                _, lane_swap, flipI, flipQ = best
+                signI = -1.0 if flipI else 1.0
+                signQ = -1.0 if flipQ else 1.0
 
-                    _, swap, flipI, flipQ = best
-                    # Apply best transform to FULL LLR vector
-                    Le = L_ext_eq[0::2].copy()
-                    Lo = L_ext_eq[1::2].copy()
-                    if swap:
-                        Le, Lo = Lo, Le
-                        print("[calib] Swapped I/Q lanes.")
-                    if flipI:
-                        Le *= -1.0
-                        print("[calib] Flipped I-lane sign.")
-                    if flipQ:
-                        Lo *= -1.0
-                        print("[calib] Flipped Q-lane sign.")
-                    L_ext_eq[0::2] = Le
-                    L_ext_eq[1::2] = Lo
-                    did_lane_sign = True
+                # Apply transform to FULL POSTERIOR LLRs
+                Le_full = L_post_eq[0::2].copy(); Lo_full = L_post_eq[1::2].copy()
+                if lane_swap:
+                    Le_full, Lo_full = Lo_full, Le_full
+                    print("[calib] Swapped I/Q lanes.")
+                if signI < 0:
+                    Le_full *= -1.0; print("[calib] Flipped I-lane sign.")
+                if signQ < 0:
+                    Lo_full *= -1.0; print("[calib] Flipped Q-lane sign.")
+                L_post_eq[0::2] = Le_full
+                L_post_eq[1::2] = Lo_full
 
-                # Pilot-agreement diagnostic after both delay & lane/sign fixes
-                pb  = pilot_bits_eq.astype(float)
-                sI  = 1.0 - 2.0 * pb[0::2]
-                sQ  = 1.0 - 2.0 * pb[1::2]
-                LpF = L_ext_eq[: 2*warm].astype(float)
-                scI = float(np.mean(LpF[0::2]*sI))
-                scQ = float(np.mean(LpF[1::2]*sQ))
+                # Posterior pilot diagnostics (agreement & BER)
+                Lp2  = L_post_eq[: 2*warm].astype(float)
+                scI  = float(np.mean(Lp2[0::2] * sI))
+                scQ  = float(np.mean(Lp2[1::2] * sQ))
+                pber = float(np.mean((Lp2 < 0).astype(int) != bits_tx[: 2*warm]))
                 print(f"[calib] Pilot agreement after fix: I={scI:.3f}, Q={scQ:.3f}.")
-
-                # Pilot BER diagnostic (EQ-domain, extrinsic)
-                Lp_bits = (LpF < 0).astype(int)
-                pber = float(np.mean(Lp_bits != bits_tx[: 2*warm]))
                 print(f"[diag] Pilot bit-error rate (EQ-domain): {pber:.3f}")
 
-            # Save last EQ-domain extrinsic
-            L_ext_eq_last = L_ext_eq
+                did_calibrate = True
+                bad_posterior = (pber > 0.25)  # bootstrap guard
+            else:
+                bad_posterior = False
+                # Reapply saved transform cheaply
+                if delay_sym != 0:
+                    soft_seq  = np.roll(soft_seq, delay_sym)
+                    L_post_eq = np.roll(L_post_eq, 2 * delay_sym)
+                if lane_swap or (signI < 0) or (signQ < 0):
+                    if lane_swap:
+                        Le = L_post_eq[0::2].copy(); Lo = L_post_eq[1::2].copy()
+                        L_post_eq[0::2] = Lo; L_post_eq[1::2] = Le
+                    if signI < 0: L_post_eq[0::2] *= -1.0
+                    if signQ < 0: L_post_eq[1::2] *= -1.0
+
+            # === Only now form EXTRINSIC ===
+            if t == 0:
+                L_extr_eq = L_post_eq  # skip subtracting prior on first pass
+                print("[rbpf] bootstrap: using posterior (no prior subtraction) for t=0.")
+            else:
+                L_extr_eq = L_post_eq - apriori_eq
+
+            # Save for final decode
+            L_extr_eq_last = L_extr_eq
 
             # EQ -> DEC: deinterleave, normalize, scale, clip
-            L_ext_dec = deinterleave(L_ext_eq, pi)
+            L_ext_dec = deinterleave(L_extr_eq, pi)
             std0 = float(np.std(L_ext_dec)) + 1e-9
-            target_std = 2.2
+            target_std = 3.5
             L_ext_dec *= (target_std / std0)
             if llr_scale != 1.0:
                 L_ext_dec *= llr_scale
-            np.clip(L_ext_dec, -12.0, 12.0, out=L_ext_dec)
+            np.clip(L_ext_dec, -14.0, 14.0, out=L_ext_dec)
 
-            # health prints (first two iters)
+            # Health prints (first two passes)
             if t == 0:
                 ess_med = float(np.median(aux.get('ess', []))) if isinstance(aux, dict) and 'ess' in aux else float('nan')
                 print(f"[health] iter1: ESS_med={ess_med:.1f} / Np={Np}, L_ext_dec std={np.std(L_ext_dec):.2f}, "
@@ -371,33 +380,45 @@ def main():
                 print(f"[health] iter2: L_ext_dec std={np.std(L_ext_dec):.2f}, "
                       f"min/max={L_ext_dec.min():.2f}/{L_ext_dec.max():.2f}")
 
-            # LDPC: DEC a-posteriori, return extrinsic for next pass
+            it_this = ldpc_it if (t == iters - 1) else ldpc_it_fast
             L_post_dec = L_ext_dec + apriori_code
             L_msg_post, apriori_code = code.decode_extrinsic(
-                L_post_dec, iters=ldpc_it, mode="nms", alpha=0.85, damping=0.0, early_stop=True
+                L_post_dec, iters=it_this, mode="nms", alpha=0.85, damping=0.0, early_stop=True
             )
 
-        # ---- Final LDPC decode (normalize the same way) ----
-        if L_ext_eq_last is None:
+        # ---- Final LDPC decode ----
+        if L_extr_eq_last is None:
             apriori_eq = interleave(apriori_code, pi) * prior_scale
             np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
-            L_ext_eq_last, soft_seq, _ = rbpf_detect(
+            L_post_eq_last, soft_seq, _ = rbpf_detect(
                 y=y, L=Lch, sigma_v2=noise_var,
                 Np=Np, model=model, model_kwargs=model_kwargs,
                 apriori_llr_bits=apriori_eq,
                 pilot_sym=x, pilot_len=warm,
                 ess_thresh=ess_thr, seed=cfg.get('seed', 0)
             )
-            # convert posterior -> extrinsic
-            L_ext_eq_last = L_ext_eq_last - apriori_eq
+            L_extr_eq_last = L_post_eq_last - apriori_eq
+            # Reapply calibration
+            if delay_sym != 0:
+                L_extr_eq_last = np.roll(L_extr_eq_last, 2 * delay_sym)
+            if lane_swap or (signI < 0) or (signQ < 0):
+                if lane_swap:
+                    Le = L_extr_eq_last[0::2].copy()
+                    Lo = L_extr_eq_last[1::2].copy()
+                    L_extr_eq_last[0::2] = Lo
+                    L_extr_eq_last[1::2] = Le
+                if signI < 0:
+                    L_extr_eq_last[0::2] *= -1.0
+                if signQ < 0:
+                    L_extr_eq_last[1::2] *= -1.0
 
-        L_post_dec = deinterleave(L_ext_eq_last, pi)
+        L_post_dec = deinterleave(L_extr_eq_last, pi)
         std0 = float(np.std(L_post_dec)) + 1e-9
-        target_std = 2.2
+        target_std = 3.5
         L_post_dec *= (target_std / std0)
         if llr_scale != 1.0:
             L_post_dec *= llr_scale
-        np.clip(L_post_dec, -12.0, 12.0, out=L_post_dec)
+        np.clip(L_post_dec, -14.0, 14.0, out=L_post_dec)
         L_post_dec += apriori_code
 
         L_msg_post, _ = code.decode_extrinsic(

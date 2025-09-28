@@ -9,7 +9,7 @@ from metrics.ber_fer import ber
 from metrics.snrr_mfb import matched_filter_bound, snr_receiver
 from dp_gp.interface import rbpf_detect
 
-# Prefer JAX LDPC
+#  JAX LDPC
 try:
     from channel_codes.ldpc_jax import LDPCJAX as LDPCCode
 except Exception:

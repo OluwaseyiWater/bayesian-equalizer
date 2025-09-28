@@ -15,17 +15,17 @@ equalizer:
   q_var: 1.0e-6
 
   # Particle filter
-  Np: 2048
-  ess_thresh: 0.7
+  Np: 1024
+  ess_thresh: 0.6
   warmup: 1200
-  iterations: 4
-  calib_max_lag: 8
+  iterations: 2
+  calib_max_lag: 4
 
   # Turbo schedule knobs
   ldpc_k: 8000
   ldpc_dv: 3
-  ldpc_iters: 120
+  ldpc_iters: 80
 
   # LLR coupling
-  prior_scale: 0.85   # DEC->EQ damping
-  llr_scale: 1.10     # EQ->DEC global gain
+  prior_scale: 0.80   # DEC->EQ damping
+  llr_scale: 1.30     # EQ->DEC global gain

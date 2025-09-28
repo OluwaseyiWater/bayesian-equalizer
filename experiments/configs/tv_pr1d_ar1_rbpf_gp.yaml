@@ -2,10 +2,10 @@ seed: 0
 snr_db: 8.0
 
 channel:
-  type: TV_AR1      # <- new time-varying channel
-  L: 2              # PR1D has 2 taps
-  rho: 0.9995       # slow drift (coherence ~ 1/(1-rho))
-  q_var: 1.0e-6     # process noise (per symbol)
+  type: TV_AR1      
+  L: 2              
+  rho: 0.9995       
+  q_var: 1.0e-6     
 
 equalizer:
   type: rbpf_ca

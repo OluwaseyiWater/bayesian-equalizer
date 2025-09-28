@@ -129,13 +129,11 @@ class RBPF:
 
             # 3) Per-particle, per-symbol likelihoods p(y_n | s, particle i)
             like_i_s = np.zeros((self.Np, 4), dtype=float)
-            temp = 1.0 
-            # if temp != 1.0:
-            like_i_s = like_i_s ** temp
+            temp = 1.2 
+            
 
 
             for i in range(self.Np):
-                # Pre-compute the ISI regressor base (depends on mem[i])
                 for s_idx, s in enumerate(self.syms):
                     # Construct phi over taps in symbol space
                     if L > 0:
@@ -146,7 +144,6 @@ class RBPF:
                     else:
                         phi_L = np.zeros(0, dtype=np.complex128)
 
-                    # Expand to state space per chosen model layout
                     phi = self.expand_phi(phi_L)
                     phi_col = phi.reshape(-1, 1)
 
@@ -159,8 +156,10 @@ class RBPF:
                     like = np.exp(- (np.abs(e) ** 2) / S) / (np.pi * S)
                     like_i_s[i, s_idx] = float(like)
 
+            if temp != 1.0:
+                like_i_s **= temp
+
             # 4) Posterior over s_n: mixture across particles WITH prior p_s
-            #    post_s ∝ sum_i w_i * like_i_s[i, :] * p_s
             num = (w[:, None] * like_i_s) * p_s[None, :]
             post_s = num.sum(axis=0)
             post_s /= (post_s.sum() + 1e-300)

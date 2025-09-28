@@ -5,8 +5,8 @@ snr_db: 8.0
 channel: { type: PR1D }
 equalizer:
   type: mmse_dfe
-  Lw: 13         # 11–13
+  Lw: 13         
   delay: 1       
-  Nb: 1          # PR(1+D) needs one FB tap
+  Nb: 1          
   warmup: 300    
-  gate_tau: 0.35 # 0.3–0.6 
+  gate_tau: 0.35 

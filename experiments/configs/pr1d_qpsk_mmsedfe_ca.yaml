@@ -1,5 +1,5 @@
 seed: 0
-msg_bits: 8000        # message length (before repetition)
+msg_bits: 8000        
 modulation: qpsk
 snr_db: 8.0
 channel:
@@ -11,5 +11,5 @@ equalizer:
   Nb: 1
   warmup: 500
   iterations: 2       
-  repeat_R: 3         # repetition factor (rate 1/R)
+  repeat_R: 3         
   lambda: 0.0

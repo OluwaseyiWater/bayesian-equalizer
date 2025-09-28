@@ -10,8 +10,8 @@ equalizer:
   Nb: 1
   warmup: 800
   lambda: 0.0
-  iterations: 3       # turbo iterations EQ↔LDPC
+  iterations: 3       
   # LDPC
-  ldpc_k: 8000        # message bits
-  ldpc_dv: 3          # column weight in A
-  ldpc_iters: 50      # BP iters inside decoder
+  ldpc_k: 8000        
+  ldpc_dv: 3         
+  ldpc_iters: 50      

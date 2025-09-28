@@ -1,13 +1,13 @@
 seed: 0
 modulation: qpsk
 snr_db: 8.0
-channel: { type: PR1D }   # PR1D | EPR4 | RANDOM
+channel: { type: PR1D }  
 equalizer:
   type: rbpf_ca
   model: ar1
   llr_scale: 1.1
   # RBPF
-  Np: 512           #  particles
+  Np: 512           
   ar_rho: 0.9995     # quasi-static taps
   q_var: 3.0e-7     # tiny drift
   warmup: 1000       
