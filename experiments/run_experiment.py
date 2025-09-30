@@ -252,15 +252,27 @@ def main():
         max_lag = int(eq_cfg.get('calib_max_lag', 6))
 
         did_calibrate  = False
-        # Lane/sign transform to reuse after t==0
         lane_swap = False
         signI     = 1.0
         signQ     = 1.0
         delay_sym = 0
         ldpc_it_fast = min(20, ldpc_it)
 
+        # --- RBPF Initial State (Warm Start using Pilots) ---
+        m0, P0 = None, None
+        if have_pilots:
+            print("[rbpf] Performing pilot-based warm start for channel state.")
+            h_ls = _ls_channel_estimate(y[:warm], x[:warm], Lch)
+            if model == 'ar1':
+                m0 = h_ls
+                state_dim = Lch
+            elif model in ('matern32','m32','matern_32'):
+                state_dim = 2 * Lch
+                m0 = np.zeros(state_dim, dtype=np.complex128)
+                m0[0::2] = h_ls
+            P0 = (1e-3) * np.eye(state_dim, dtype=np.complex128)
+
         for t in range(iters):
-            # Build decoder a-priori in EQ order (one time per pass)
             apriori_eq = interleave(apriori_code, pi) * prior_scale
             np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
 
@@ -270,7 +282,8 @@ def main():
                 Np=Np, model=model, model_kwargs=model_kwargs,
                 apriori_llr_bits=apriori_eq,
                 pilot_sym=x, pilot_len=warm,
-                ess_thresh=ess_thr, seed=cfg.get('seed', 0)
+                ess_thresh=ess_thr, seed=cfg.get('seed', 0),
+                m0 = m0, P0 = P0
             )
 
             # -------- Pilot calibration ONCE at t==0 (on POSTERIOR) --------
@@ -318,16 +331,27 @@ def main():
                 signQ = -1.0 if flipQ else 1.0
 
                 # Apply transform to FULL POSTERIOR LLRs
-                Le_full = L_post_eq[0::2].copy(); Lo_full = L_post_eq[1::2].copy()
+                Le_full = L_post_eq[0::2].copy()
+                Lo_full = L_post_eq[1::2].copy()
+
+                if signI < 0:
+                    Le_full *= -1.0
+                if signQ < 0:
+                    Lo_full *= -1.0
+
                 if lane_swap:
-                    Le_full, Lo_full = Lo_full, Le_full
+                    L_post_eq[0::2] = Lo_full
+                    L_post_eq[1::2] = Le_full
+                else:
+                    L_post_eq[0::2] = Le_full
+                    L_post_eq[1::2] = Lo_full
+
+                if lane_swap:
                     print("[calib] Swapped I/Q lanes.")
                 if signI < 0:
-                    Le_full *= -1.0; print("[calib] Flipped I-lane sign.")
+                    print("[calib] Flipped I-lane sign.")
                 if signQ < 0:
-                    Lo_full *= -1.0; print("[calib] Flipped Q-lane sign.")
-                L_post_eq[0::2] = Le_full
-                L_post_eq[1::2] = Lo_full
+                    print("[calib] Flipped Q-lane sign.")
 
                 # Posterior pilot diagnostics (agreement & BER)
                 Lp2  = L_post_eq[: 2*warm].astype(float)
@@ -341,7 +365,6 @@ def main():
                 bad_posterior = (pber > 0.25)  # bootstrap guard
             else:
                 bad_posterior = False
-                # Reapply saved transform cheaply
                 if delay_sym != 0:
                     soft_seq  = np.roll(soft_seq, delay_sym)
                     L_post_eq = np.roll(L_post_eq, 2 * delay_sym)
@@ -352,9 +375,9 @@ def main():
                     if signI < 0: L_post_eq[0::2] *= -1.0
                     if signQ < 0: L_post_eq[1::2] *= -1.0
 
-            # === Only now form EXTRINSIC ===
+            # ---- Only now form EXTRINSIC ----
             if t == 0:
-                L_extr_eq = L_post_eq  # skip subtracting prior on first pass
+                L_extr_eq = L_post_eq  
                 print("[rbpf] bootstrap: using posterior (no prior subtraction) for t=0.")
             else:
                 L_extr_eq = L_post_eq - apriori_eq
@@ -395,7 +418,8 @@ def main():
                 Np=Np, model=model, model_kwargs=model_kwargs,
                 apriori_llr_bits=apriori_eq,
                 pilot_sym=x, pilot_len=warm,
-                ess_thresh=ess_thr, seed=cfg.get('seed', 0)
+                ess_thresh=ess_thr, seed=cfg.get('seed', 0),
+                m0 = m0, P0 = P0
             )
             L_extr_eq_last = L_post_eq_last - apriori_eq
             # Reapply calibration
@@ -437,7 +461,7 @@ def main():
 
     if bits_to_check is None and 'bits_hat' in locals():
         bits_to_check = bits[2*warm:] # Factor of 2 for QPSK
-        bits_hat_to_check = bits_hat[warm:]
+        bits_hat_to_check = bits_hat[2*warm:]
 
     # ---- metrics (unified for all branches) ----
     print(f'--- Run complete for EQ: {eq_type} ---')

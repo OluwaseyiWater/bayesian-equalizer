@@ -78,7 +78,7 @@ class RBPF:
             P = np.tile(np.asarray(P0, dtype=np.complex128)[None, :, :], (self.Np, 1, 1))
         else:
             m = np.zeros((self.Np, D), dtype=np.complex128)
-            P = np.tile(10.0 * np.eye(D, dtype=np.complex128)[None, :, :], (self.Np, 1, 1))
+            P = np.tile(1.0 * np.eye(D, dtype=np.complex128)[None, :, :], (self.Np, 1, 1))
 
         # ISI memory in symbol space (length L-1)
         mem = np.zeros((self.Np, max(0, L-1)), dtype=np.complex128)
@@ -129,7 +129,7 @@ class RBPF:
 
             # 3) Per-particle, per-symbol likelihoods p(y_n | s, particle i)
             like_i_s = np.zeros((self.Np, 4), dtype=float)
-            temp = 1.2 
+            temp = 1.0 
             
 
 
