@@ -1,5 +1,5 @@
 import sys, os
-sys.path.append(os.path.dirname(os.path.dirname(__file__))) 
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 import argparse
 import yaml
 import numpy as np
@@ -19,6 +19,10 @@ from utils.interleave import make_block_interleaver, interleave, deinterleave
 import channels.linear_isi as chlin
 from dp_gp.interface import rbpf_detect
 import channels.time_varying as chtv
+import inspect
+print(f"--> [DIAGNOSTIC] Running rbpf_detect from: {inspect.getfile(rbpf_detect)}")
+
+
 
 def _ls_channel_estimate(y_pil, x_pil, L):
     """
@@ -282,7 +286,7 @@ def main():
                 Np=Np, model=model, model_kwargs=model_kwargs,
                 apriori_llr_bits=apriori_eq,
                 pilot_sym=x, pilot_len=warm,
-                ess_thresh=ess_thr, seed=cfg.get('seed', 0),
+                ess_thresh=ess_thr, seed=cfg.get('seed', 0) + t,
                 m0 = m0, P0 = P0
             )
 
@@ -330,14 +334,11 @@ def main():
                 signI = -1.0 if flipI else 1.0
                 signQ = -1.0 if flipQ else 1.0
 
-                # Apply transform to FULL POSTERIOR LLRs
                 Le_full = L_post_eq[0::2].copy()
                 Lo_full = L_post_eq[1::2].copy()
 
-                if signI < 0:
-                    Le_full *= -1.0
-                if signQ < 0:
-                    Lo_full *= -1.0
+                if signI < 0: Le_full *= -1.0
+                if signQ < 0: Lo_full *= -1.0
 
                 if lane_swap:
                     L_post_eq[0::2] = Lo_full
@@ -362,18 +363,28 @@ def main():
                 print(f"[diag] Pilot bit-error rate (EQ-domain): {pber:.3f}")
 
                 did_calibrate = True
-                bad_posterior = (pber > 0.25)  # bootstrap guard
+                bad_posterior = (pber > 0.25)  
             else:
+                print(f"\n>>> DEBUG: Applying calibration in turbo iteration t={t+1} <<<\n")
                 bad_posterior = False
                 if delay_sym != 0:
                     soft_seq  = np.roll(soft_seq, delay_sym)
                     L_post_eq = np.roll(L_post_eq, 2 * delay_sym)
                 if lane_swap or (signI < 0) or (signQ < 0):
+                    Le_full = L_post_eq[0::2].copy()
+                    Lo_full = L_post_eq[1::2].copy()
+
+                    if signI < 0:
+                        Le_full *= -1.0
+                    if signQ < 0:
+                        Lo_full *= -1.0
+                    
                     if lane_swap:
-                        Le = L_post_eq[0::2].copy(); Lo = L_post_eq[1::2].copy()
-                        L_post_eq[0::2] = Lo; L_post_eq[1::2] = Le
-                    if signI < 0: L_post_eq[0::2] *= -1.0
-                    if signQ < 0: L_post_eq[1::2] *= -1.0
+                        L_post_eq[0::2] = Lo_full
+                        L_post_eq[1::2] = Le_full
+                    else:
+                        L_post_eq[0::2] = Le_full
+                        L_post_eq[1::2] = Lo_full
 
             # ---- Only now form EXTRINSIC ----
             if t == 0:
@@ -390,8 +401,8 @@ def main():
             std0 = float(np.std(L_ext_dec)) + 1e-9
             target_std = 3.5
             L_ext_dec *= (target_std / std0)
-            if llr_scale != 1.0:
-                L_ext_dec *= llr_scale
+            # if llr_scale != 1.0:
+            #     L_ext_dec *= llr_scale
             np.clip(L_ext_dec, -14.0, 14.0, out=L_ext_dec)
 
             # Health prints (first two passes)
@@ -418,11 +429,10 @@ def main():
                 Np=Np, model=model, model_kwargs=model_kwargs,
                 apriori_llr_bits=apriori_eq,
                 pilot_sym=x, pilot_len=warm,
-                ess_thresh=ess_thr, seed=cfg.get('seed', 0),
+                ess_thresh=ess_thr, seed=cfg.get('seed', 0) + iters,
                 m0 = m0, P0 = P0
             )
             L_extr_eq_last = L_post_eq_last - apriori_eq
-            # Reapply calibration
             if delay_sym != 0:
                 L_extr_eq_last = np.roll(L_extr_eq_last, 2 * delay_sym)
             if lane_swap or (signI < 0) or (signQ < 0):
