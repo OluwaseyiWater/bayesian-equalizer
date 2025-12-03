@@ -1,0 +1,13 @@
+seed: 0
+modulation: qpsk
+snr_db: 7.0 # This corresponds to Es/N0 = 10 dB
+
+# Use a large number of symbols for a stable BER measurement
+# 200k symbols = 400k bits. At a BER of 1e-3, this gives ~400 errors.
+n_bits: 16000
+
+channel:
+  type: AWGN
+
+equalizer:
+  type: trivial # Use a simple hard-slicer, no equalizer needed

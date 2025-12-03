@@ -12,7 +12,7 @@ equalizer:
   warmup: 1600
   ess_thresh: 0.6
   iterations: 3
-  ldpc_k: 4000
+  ldpc_k: 8000
   ldpc_iters: 80
   alpha: 0.85
   prior_scale: 0.9

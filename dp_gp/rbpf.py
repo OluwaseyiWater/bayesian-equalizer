@@ -49,21 +49,6 @@ class RBPF:
     def run(self, y, pri_llr_bits=None, pilots=None, pilot_len=0, ess_thresh=0.5, m0=None, P0=None):
         """
         Run the RBPF forward pass.
-
-        Parameters
-        ----------
-        y            : (N,) complex np.ndarray, received symbols
-        pri_llr_bits : (2N,) float or None, decoder a-priori LLRs (EQ order)
-        pilots       : (N,) complex or None, transmitted symbols (pilots in front)
-        pilot_len    : int, number of pilot symbols at the start
-        ess_thresh   : float in (0,1], resample when ESS < ess_thresh * Np
-        m0, P0       : optional initial mean/covariance in the chosen state space
-
-        Returns
-        -------
-        L_post_bits  : (2N,) float, posterior bit LLRs in EQ order (NOT extrinsic)
-        soft_seq     : (N,) complex, E[s_n | y_1:n] (diagnostic)
-        aux          : dict, e.g., {"ess": array of ESS per step}
         """
         y = np.asarray(y, dtype=np.complex128)
         N = y.size
@@ -129,10 +114,7 @@ class RBPF:
 
             # 3) Per-particle, per-symbol likelihoods p(y_n | s, particle i)
             like_i_s = np.zeros((self.Np, 4), dtype=float)
-            temp = 1.0 
             
-
-
             for i in range(self.Np):
                 for s_idx, s in enumerate(self.syms):
                     # Construct phi over taps in symbol space
@@ -155,9 +137,6 @@ class RBPF:
                     # Complex Gaussian likelihood (scalar)
                     like = np.exp(- (np.abs(e) ** 2) / S) / (np.pi * S)
                     like_i_s[i, s_idx] = float(like)
-
-            if temp != 1.0:
-                like_i_s **= temp
 
             # 4) Posterior over s_n: mixture across particles WITH prior p_s
             num = (w[:, None] * like_i_s) * p_s[None, :]
@@ -186,7 +165,6 @@ class RBPF:
                 p_i /= (p_i.sum() + 1e-300)
                 s_idx = self.rng.choice(4, p=p_i)
                 s = self.syms[s_idx]
-
 
                 # Measurement vector for chosen s
                 if L > 0:

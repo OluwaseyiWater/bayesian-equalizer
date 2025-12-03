@@ -1,0 +1,24 @@
+seed: 0
+modulation: qpsk
+snr_db: 12.0
+
+channel:
+  type: TV_AR1
+  L: 2
+  rho: 0.9995
+  q_var: 1.0e-6
+
+equalizer:
+  type: rbpf_ca
+  model: ar1
+  ar_rho: 0.9995
+  q_var: 1.0e-6
+  Np: 1024
+  ess_thresh: 0.6
+  warmup: 1200
+  iterations: 8
+  calib_max_lag: 4
+  ldpc_k: 8000
+  ldpc_iters: 80
+  prior_scale: 0.80  
+  
