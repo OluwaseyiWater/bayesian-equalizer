@@ -38,22 +38,14 @@ def main():
     
     # ---- Channel code setup ----
     ldpc_k_config = int(eq_cfg.get('ldpc_k', 8000))
-    # Instantiate the QC‑LDPC code.  Its actual (k,n) dimensions may differ
-    # from the requested k due to lifting size alignment.
     code = QCLDPCCode(k=ldpc_k_config)
 
-    # Use the code's actual k and n properties
     ldpc_k = code.k
     n = code.n
 
     # ---- TX side ----
-    # Generate a message of length ldpc_k_config (the requested k).  If this
-    # length is smaller than code.k, the encoder pads the remaining bits
-    # with zeros.  If it is larger, the encoder will raise an error.
     bits_msg = rng.integers(0, 2, size=ldpc_k_config)
     bits_tx_coded = code.encode(bits_msg)
-    
-    # --- FIX: Ensure interleaver length matches the coded block length ---
     pi = make_block_interleaver(n, 256)
     bits_tx = interleave(bits_tx_coded, pi)
     x = qpsk_mod(bits_tx)
@@ -68,7 +60,6 @@ def main():
     ch_cfg = cfg.get('channel', {})
     ch_type = ch_cfg.get('type')
     if ch_type == 'TV_AR1':
-        # tv_ar1 returns (h_taps, y); only the received sequence y is needed.
         _, y = tv_ar1(x, noise, **ch_cfg, seed=cfg.get('seed', 0))
         h_used = None
     else:

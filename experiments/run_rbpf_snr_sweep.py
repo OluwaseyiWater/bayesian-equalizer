@@ -5,9 +5,6 @@ import csv
 import time
 import yaml
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
-# Import the core simulation function from your existing script
-# This is great practice - reusing code instead of copying it.
 from sweep_seeds_gp import run_once
 
 def load_yaml(path):
@@ -25,27 +22,21 @@ def main():
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
 
     # --- Central Configuration ---
-    # Define the SNR range you want to sweep
-    SNR_SWEEP_DB = list(range(4, 13)) # e.g., 4, 5, 6, 7, 8, 9, 10, 11, 12
+    SNR_SWEEP_DB = list(range(4, 13))
     SEEDS_PER_SNR = args.seeds
     
-    # Load the base configuration from the YAML file
-    # The SNR in this file will be ignored and overridden in the loop.
+   
     base_cfg = load_yaml(args.config)
     
-    # We can use the same code seed for the LDPC graph across all runs for consistency
+    
     code_seed = base_cfg.get('code_seed', 0)
 
     # --- Build the list of jobs ---
     jobs = []
     for snr in SNR_SWEEP_DB:
         for seed in range(SEEDS_PER_SNR):
-            # Create a copy of the base config for this specific job
             job_cfg = base_cfg.copy()
-            # **This is the key step: override the SNR for this run**
             job_cfg['snr_db'] = snr
-            
-            # The run_once function needs two seed arguments
             jobs.append((job_cfg, seed, code_seed))
 
     print(f"Starting SNR sweep for RBPF-GP across {len(SNR_SWEEP_DB)} SNR points.")
@@ -55,7 +46,6 @@ def main():
     t0 = time.time()
     rows = []
     with ProcessPoolExecutor(max_workers=args.procs) as executor:
-        # The submit call now passes three arguments to run_once
         future_to_job = {executor.submit(run_once, cfg, s, cs): (cfg, s) for cfg, s, cs in jobs}
         
         for i, future in enumerate(as_completed(future_to_job), 1):

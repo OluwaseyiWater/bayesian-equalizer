@@ -28,8 +28,7 @@ def analyze_rbpf_params(df, output_dir="figures"):
     if df.empty:
         print("RBPF sweep data is empty. Skipping analysis.")
         return
-        
-    # It's difficult to plot against a dict 'mkws'. We need to parse it.
+
     try:
         df['ell'] = df['mkws'].apply(lambda x: eval(x).get('ell', np.nan))
     except:

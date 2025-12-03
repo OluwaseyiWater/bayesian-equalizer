@@ -17,31 +17,24 @@ from utils.interleave import make_block_interleaver, interleave, deinterleave
 from channel_codes.ldpc_jax import LDPCJAX as LDPCCode
 from channel_codes.ldpc_jax import LLR_MAX
 
-# -------------------
-# globals / knobs
-# -------------------
-SNRs   = list(range(4, 13))  # 4..12 dB Es/N0
-SEEDS  = [0, 1, 2]
-N_BITS = 20000               # uncoded bits for uncoded baselines
-CHANNEL = "PR1D"             # PR1D | EPR4 | RANDOM
 
-# DFE hyperparams (same across runs for consistency)
+SNRs   = list(range(4, 13))  
+SEEDS  = [0, 1, 2]
+N_BITS = 20000               
+CHANNEL = "PR1D"          
+
+
 DFE_LW    = 13
 DFE_DELAY = 1
 DFE_NB    = 1
 DFE_WARM  = 500
 DFE_LAM   = 0.0
+LDPC_K      = 8000   
+LDPC_DV     = 3      
+LDPC_ALPHA  = 0.9    
+LDPC_ITERS  = 50     
+TURBO_ITERS = 2      
 
-# LDPC + turbo-eq knobs
-LDPC_K      = 8000   # message bits (n = 2k coded)
-LDPC_DV     = 3      # column weight for A in H=[A|I]
-LDPC_ALPHA  = 0.9    # min-sum scaling
-LDPC_ITERS  = 50     # BP iterations inside LDPC
-TURBO_ITERS = 2      # equalizer <-> LDPC iterations
-
-# -------------------
-# utils
-# -------------------
 def ensure_dirs():
     os.makedirs("results", exist_ok=True)
     os.makedirs("figures", exist_ok=True)
@@ -49,7 +42,7 @@ def ensure_dirs():
 def gen_data_qpsk(snr_db, n_bits, seed, channel="PR1D"):
     rng = np.random.default_rng(seed)
     bits = rng.integers(0, 2, size=n_bits, dtype=int)
-    x = qpsk_mod(bits)  # unit Es
+    x = qpsk_mod(bits)  
     if channel.upper() == "PR1D":
         h = pr1d()
     elif channel.upper() == "EPR4":
@@ -80,7 +73,6 @@ def errplot(xs, ys, es, **kw):
     return plt.errorbar(xs, ys, yerr=es, capsize=3, **kw)
 
 def ebn0_offset_db(mod_bits=2, rate=0.5):
-    # Eb/N0 = Es/N0 - 10*log10(mod_bits * rate)
     k = mod_bits * rate
     return -10.0 * np.log10(k)
 
@@ -90,9 +82,9 @@ def annotate_ebn0(ax, offset_db, which='bottom'):
     else:
         ax.set_xlabel(f"SNR (Es/N0) [dB]   (Eb/N0 = Es/N0 {offset_db:+.2f} dB)")
 
-# -------------------
+
 # baselines (uncoded)
-# -------------------
+
 def run_trivial(bits, x, y, noise_var, h):
     pre = y.copy()
     s_hat, bits_hat = hard_slicer(pre, 'qpsk')
@@ -168,9 +160,9 @@ def run_mmse_dfe(bits, x, y, noise_var, h,
         gap_fb_db=gap_to_mfb_db(snr_fb, snr_mfb_lin)
     )
 
-# -------------------
+
 # coded (LDPC) baseline
-# -------------------
+
 def run_mmse_dfe_ca_ldpc(snr_db, seed, channel=CHANNEL,
                          k=LDPC_K, dv=LDPC_DV, alpha=LDPC_ALPHA, ldpc_iters=LDPC_ITERS,
                          Lw=DFE_LW, delay=DFE_DELAY, Nb=DFE_NB, warmup=DFE_WARM, lam=DFE_LAM,
@@ -244,9 +236,7 @@ def run_mmse_dfe_ca_ldpc(snr_db, seed, channel=CHANNEL,
     )
 
 
-# -------------------
 # main sweep
-# -------------------
 def main():
     ensure_dirs()
     rows = []

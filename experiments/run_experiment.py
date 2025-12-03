@@ -558,7 +558,6 @@ def _ls_channel_estimate(y_pil, x_pil, L):
     y_pil = np.asarray(y_pil, dtype=np.complex128)
     x_pil = np.asarray(x_pil, dtype=np.complex128)
     N = len(y_pil)
-    # Build X (N x L): X[n, k] = x[n-k], zero for out-of-range
     X = np.zeros((N, L), dtype=np.complex128)
     for k in range(L):
         X[k:, k] = x_pil[:N-k]
@@ -679,8 +678,6 @@ def main():
             return s[0]
         pre, s_hat = zf_dfe_detect(y, w, b, dly, slicer_one)
         _, bits_hat = hard_slicer(s_hat, 'qpsk')
-        # The true pre-slicer signal in a DFE includes the feedback.
-        # This implementation's `zf_dfe_detect` doesn't seem to return it, so we use `pre` as is.
         pre_slicer_signal_for_snr = pre
 
     elif eq_type == 'mmse_dfe':
@@ -917,7 +914,6 @@ def main():
                         L_post_eq[0::2] = Le_full
                         L_post_eq[1::2] = Lo_full
 
-            # ---- Only now form EXTRINSIC ----
             if t == 0:
                 L_extr_eq = L_post_eq  
                 print("[rbpf] bootstrap: using posterior (no prior subtraction) for t=0.")

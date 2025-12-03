@@ -42,7 +42,7 @@ def plot_snr_curves(df, channel, output_dir="figures"):
         if method not in df_channel['method'].unique():
             continue
 
-        ber_col = ber_cols.get(method, 'ber') # Use .get for safety
+        ber_col = ber_cols.get(method, 'ber') 
         method_df = df_channel[df_channel['method'] == method]
         
         # Group by SNR and calculate mean BER
@@ -92,7 +92,7 @@ def plot_method_comparison(df, channel, snr, output_dir="figures"):
     mean_bers = []
     
     for method in methods_present:
-        ber_col = ber_cols.get(method, 'ber') # Use .get for safety
+        ber_col = ber_cols.get(method, 'ber') 
         ber_val = robust_mean(df_filtered[df_filtered['method'] == method][ber_col])
         mean_bers.append(ber_val)
 
@@ -135,7 +135,6 @@ def load_all_data(results_dir="results"):
         if "rbpf" in filename and filename.endswith(".csv"):
             filepath = os.path.join(results_dir, filename)
             try:
-                # Ignore commented lines at the end of the file
                 df_rbpf = pd.read_csv(filepath, comment='#')
                 if 'ch' in df_rbpf.columns:
                     df_rbpf = df_rbpf.rename(columns={'ch': 'channel'})
@@ -149,12 +148,8 @@ def load_all_data(results_dir="results"):
         raise FileNotFoundError("No CSV result files found in the 'results' directory.")
 
     full_df = pd.concat(all_dfs, ignore_index=True)
-
-    # ---- NEW: Robust data cleaning ----
-    # Drop rows where essential columns are NaN
     essential_cols = ['method', 'snr_db', 'channel']
     full_df.dropna(subset=essential_cols, inplace=True)
-    # ------------------------------------
 
     if 'channel' in full_df.columns:
         full_df['channel'] = full_df['channel'].str.upper()
