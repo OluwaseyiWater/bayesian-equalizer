@@ -132,7 +132,7 @@ def load_all_data(results_dir="results"):
 
     # Load data from the RBPF-GP sweeps
     for filename in os.listdir(results_dir):
-        if "rbpf" in filename and filename.endswith(".csv"):
+        if "rbpf" in filename and filename.endswith("rbpf_gp_seed_sweep.csv"):
             filepath = os.path.join(results_dir, filename)
             try:
                 df_rbpf = pd.read_csv(filepath, comment='#')

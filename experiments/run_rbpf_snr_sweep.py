@@ -15,7 +15,7 @@ def main():
     parser = argparse.ArgumentParser(description="Run an SNR sweep for the RBPF-GP equalizer.")
     parser.add_argument("--config", required=True, help="YAML config file to use as a template.")
     parser.add_argument("--out", default="results/rbpf_gp_snr_sweep.csv", help="Output CSV file for the sweep.")
-    parser.add_argument("--seeds", type=int, default=5, help="Number of random seeds to run per SNR point.")
+    parser.add_argument("--seeds", type=int, default=3, help="Number of random seeds to run per SNR point.")
     parser.add_argument("--procs", type=int, default=os.cpu_count(), help="Number of parallel processes.")
     args = parser.parse_args()
 
