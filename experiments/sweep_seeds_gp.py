@@ -8,6 +8,7 @@ import channels.linear_isi as chlin
 from metrics.ber_fer import ber
 from metrics.snrr_mfb import matched_filter_bound, snr_receiver
 from dp_gp.interface import rbpf_detect
+import channels.time_varying as chtv
 
 #  JAX LDPC
 try:
@@ -22,22 +23,37 @@ def load_yaml(path):
 
 
 def make_channel(cfg, rng):
-    ch_cfg = cfg.get('channel', {'type': 'PR1D'})
+    """Correctly creates either an LTI or a Time-Varying channel."""
+    ch_cfg = cfg.get('channel', {})
     ch_type = ch_cfg.get('type', 'PR1D').upper()
-    if ch_type == 'PR1D':
-        h = chlin.pr1d()
-    elif ch_type == 'EPR4':
-        h = chlin.epr4()
-    elif ch_type == 'RANDOM':
-        h = chlin.random_fir(int(ch_cfg.get('L', 5)), seed=cfg.get('seed', 0))
+
+    # Handle LTI (Linear Time-Invariant) channels
+    if ch_type in ('PR1D', 'EPR4', 'RANDOM'):
+        if ch_type == 'PR1D':
+            h = chlin.pr1d()
+        elif ch_type == 'EPR4':
+            h = chlin.epr4()
+        else: # RANDOM
+            L = int(ch_cfg.get('L', 5))
+            h = chlin.random_fir(L, seed=cfg.get('seed', 0))
+        return ch_type, h, chlin.make_channel(h)
+
+    # Handle TV (Time-Varying) channels
+    elif ch_type in ('TV_AR1', 'TV-AR1', 'TVAR1'):
+        Ltv = int(ch_cfg.get('L', 2))
+        rho = float(ch_cfg.get('rho', 0.9995))
+        q_var = float(ch_cfg.get('q_var', 1e-6))
+        channel_func = chtv.tv_ar1_fir(L=Ltv, rho=rho, q_var=q_var, seed=cfg.get('seed', 0))
+        h = None 
+        return ch_type, h, channel_func
+        
     else:
         raise ValueError(f"Unknown channel {ch_type}")
-    return ch_type, h, chlin.make_channel(h)
 
 
 def run_once(cfg, seed, code_seed):
-    # Pull knobs from YAML (RBPF code-aided branch)
     eq = cfg['equalizer']
+    ch_cfg = cfg.get('channel', {}) 
     snr_db = float(cfg.get('snr_db', 8.0))
 
     # Model + kwargs
@@ -64,17 +80,16 @@ def run_once(cfg, seed, code_seed):
     dv          = int(eq.get('ldpc_dv', 3))
     alpha       = float(eq.get('alpha', 0.9))
     ldpc_it     = int(eq.get('ldpc_iters', 30))
-    prior_scale = float(eq.get('prior_scale', 1.0))  # DEC->EQ damping
-    llr_scale   = float(eq.get('llr_scale',   1.0))  # EQ->DEC scaling
+    prior_scale = float(eq.get('prior_scale', 1.0))
+    llr_scale   = float(eq.get('llr_scale',   1.0))
 
     rng = np.random.default_rng(seed)
 
     # Code, interleaver, mapping 
     code = LDPCCode(k=k, dv=dv, seed=code_seed, alpha=alpha)
     bits_msg   = rng.integers(0, 2, size=k, dtype=int)
-    bits_coded = code.encode(bits_msg)                 # n = 2k
+    bits_coded = code.encode(bits_msg)
     n = bits_coded.size
-
     pi_rows = eq.get('pi_rows', None)
     pi = make_block_interleaver(n, nrows=pi_rows if pi_rows is not None else max(2, int(round(np.sqrt(n)))))
     bits_tx = interleave(bits_coded, pi)
@@ -83,7 +98,12 @@ def run_once(cfg, seed, code_seed):
     # Channel
     ch_type, h, channel = make_channel(cfg, rng)
     y, noise_var, h_used = channel(x, snr_db, Es=1.0, rng=rng)
-    Lch = len(h)
+    
+    is_tv_channel = h is None
+    if is_tv_channel:
+        Lch = int(ch_cfg.get('L', 2)) 
+    else:
+        Lch = len(h) 
 
     # Turbo loop (EQ<->DEC, extrinsic schedule)
     apriori_code = np.zeros(n, dtype=float)
@@ -91,10 +111,8 @@ def run_once(cfg, seed, code_seed):
     L_ext_eq_last = None
 
     for t in range(iters):
-        # DEC -> EQ prior (interleaved) with optional damping & clip
         apriori_eq = interleave(apriori_code, pi) * prior_scale
         np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
-
         L_ext_eq, soft_seq, aux = rbpf_detect(
             y=y, L=Lch, sigma_v2=noise_var,
             Np=Np, model=model, model_kwargs=model_kwargs,
@@ -102,31 +120,21 @@ def run_once(cfg, seed, code_seed):
             pilot_sym=x, pilot_len=warm,
             ess_thresh=ess_thr, seed=seed
         )
-
-        # --- sanity prints ---
         if t == 0:
             ess_med = float(np.median(aux.get('ess', []))) if isinstance(aux, dict) else float('nan')
             print(f"[seed {seed:>2}] iter1: apriori LLR min/max={apriori_eq.min():.2f}/{apriori_eq.max():.2f} | ESS_med={ess_med:.1f}")
-
-        # EQ -> DEC: deinterleave + adaptive normalization + gentle scaling + wider clip
         L_ext_dec = deinterleave(L_ext_eq, pi)
         target_std = 3.0
         std = float(np.std(L_ext_dec)) + 1e-9
         L_ext_dec *= (target_std / std)
-        if llr_scale != 1.0:
-            L_ext_dec *= llr_scale
+        if llr_scale != 1.0: L_ext_dec *= llr_scale
         np.clip(L_ext_dec, -24.0, 24.0, out=L_ext_dec)
-
         if t == 1:
             print(f"[seed {seed:>2}] iter2: L_ext_dec std={np.std(L_ext_dec):.2f}, min/max={L_ext_dec.min():.2f}/{L_ext_dec.max():.2f}")
-
         L_post_dec = L_ext_dec + apriori_code
-
-        # LDPC: extrinsic back to equalizer (NMS)
         L_msg_post, apriori_code = code.decode_extrinsic(
             L_post_dec, iters=80, mode="nms", alpha=0.85, damping=0.0, early_stop=True
         )
-
         L_ext_eq_last = L_ext_eq
 
     # Final decode
@@ -134,22 +142,15 @@ def run_once(cfg, seed, code_seed):
         apriori_eq = interleave(apriori_code, pi) * prior_scale
         np.clip(apriori_eq, -16.0, 16.0, out=apriori_eq)
         L_ext_eq_last, soft_seq, _ = rbpf_detect(
-            y=y, L=Lch, sigma_v2=noise_var,
-            Np=Np, model=model, model_kwargs=model_kwargs,
-            apriori_llr_bits=apriori_eq,
-            pilot_sym=x, pilot_len=warm,
-            ess_thresh=ess_thr, seed=seed
+            y=y, L=Lch, sigma_v2=noise_var, Np=Np, model=model, model_kwargs=model_kwargs,
+            apriori_llr_bits=apriori_eq, pilot_sym=x, pilot_len=warm, ess_thresh=ess_thr, seed=seed
         )
-
     L_post_dec = deinterleave(L_ext_eq_last, pi)
-    target_std = 3.0
-    std = float(np.std(L_post_dec)) + 1e-9
+    target_std = 3.0; std = float(np.std(L_post_dec)) + 1e-9
     L_post_dec *= (target_std / std)
-    if llr_scale != 1.0:
-        L_post_dec *= llr_scale
+    if llr_scale != 1.0: L_post_dec *= llr_scale
     np.clip(L_post_dec, -24.0, 24.0, out=L_post_dec)
     L_post_dec += apriori_code
-
     L_msg_post, _ = code.decode_extrinsic(
         L_post_dec, iters=80, mode="nms", alpha=0.85, damping=0.0, early_stop=True
     )
@@ -158,7 +159,11 @@ def run_once(cfg, seed, code_seed):
     # Metrics
     msg_ber = ber(bits_msg, bits_msg_hat)
     snr_lin = snr_receiver(x[warm:], soft_seq[warm:])
-    snr_mfb = matched_filter_bound(h_used, noise_var, Es=1.0)
+    
+    if is_tv_channel:
+        snr_mfb = float('nan')
+    else:
+        snr_mfb = matched_filter_bound(h_used, noise_var, Es=1.0)
 
     return dict(
         seed=seed, ber=float(msg_ber),

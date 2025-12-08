@@ -1,158 +1,261 @@
+# import os
+# import pandas as pd
+# import matplotlib.pyplot as plt
+# import numpy as np
+# import argparse
+
+# def robust_mean(series):
+#     """Helper function to safely calculate mean, ignoring non-numeric types."""
+#     return pd.to_numeric(series, errors='coerce').mean()
+
+# def plot_snr_curves(df, channel_name, output_dir="figures"):
+#     """Generates and saves BER vs. SNR plots for a specific channel."""
+#     plt.style.use('seaborn-v0_8-whitegrid')
+#     fig, ax = plt.subplots(figsize=(10, 7))
+
+#     method_map = {
+#         'trivial': 'Trivial (No EQ)',
+#         'mmse_le': 'MMSE-LE',
+#         'mlsd': 'MLSD (Viterbi)',
+#         'mmse_dfe': 'MMSE-DFE',
+#         'mmse_dfe_ca_ldpc': 'MMSE-DFE-CA (LDPC)',
+#         'rbpf_ca': 'RBPF-GP-CA (Proposed)'
+#     }
+
+#     ber_cols = {
+#         'trivial': 'ber', 'mmse_le': 'ber', 'mlsd': 'ber', 'mmse_dfe': 'ber_dd',
+#         'mmse_dfe_ca_ldpc': 'msg_ber', 'rbpf_ca': 'ber'
+#     }
+
+#     df_channel = df[df['channel'] == channel_name]
+#     if df_channel.empty:
+#         print(f"No data found for channel '{channel_name}'. Skipping plot.")
+#         return
+
+#     # --- NEW: Define a small value to replace zeros for log plotting ---
+#     ZERO_BER_FLOOR = 1e-7
+
+#     for method_key, display_name in method_map.items():
+#         if method_key not in df_channel['method'].unique():
+#             continue
+
+#         ber_col = ber_cols.get(method_key, 'ber')
+#         method_df = df_channel[df_channel['method'] == method_key]
+        
+#         grouped = method_df.groupby('snr_db')[ber_col].apply(robust_mean).reset_index()
+#         grouped = grouped.dropna(subset=[ber_col])
+
+#         # --- MODIFIED: Condition and zero-handling logic ---
+#         if not grouped.empty:
+#             # Replace any 0.0 BER values with our small floor value for plotting
+#             grouped[ber_col] = grouped[ber_col].replace(0.0, ZERO_BER_FLOOR)
+#             ax.semilogy(grouped['snr_db'], grouped[ber_col], 'o-', label=display_name)
+
+#     ax.set_xlabel("SNR (Es/N0) [dB]")
+#     ax.set_ylabel("Bit Error Rate (BER)")
+#     ax.set_title(f"Equalizer Performance on {channel_name.upper()} Channel")
+#     ax.legend(fontsize=12)
+#     # Adjust y-axis to accommodate the new floor
+#     ax.set_ylim(bottom=ZERO_BER_FLOOR / 2, top=1.0)
+#     ax.grid(True, which='both', linestyle='--')
+    
+#     filename = f"ber_vs_snr_{channel_name.lower()}.png"
+#     plt.savefig(os.path.join(output_dir, filename), dpi=300)
+#     print(f"Saved SNR curve plot to {os.path.join(output_dir, filename)}")
+#     plt.close()
+
+
+# def load_and_prepare_data(results_dir="results"):
+#     """
+#     Loads the two specific CSV files, assigns the correct channel name to each,
+#     and combines them into a single, clean dataframe.
+#     """
+#     file_channel_map = {
+#         'snr_sweep.csv': 'PR1D',
+#         'snr_sweep_ldpc.csv': 'TV_AR1'
+#     }
+    
+#     all_dfs = []
+    
+#     for filename, channel_name in file_channel_map.items():
+#         filepath = os.path.join(results_dir, filename)
+#         if os.path.exists(filepath):
+#             try:
+#                 df = pd.read_csv(filepath)
+#                 # ** This is the key step: Assign the channel name **
+#                 df['channel'] = channel_name
+#                 all_dfs.append(df)
+#                 print(f"Successfully loaded '{filepath}' and assigned to channel '{channel_name}'")
+#             except Exception as e:
+#                 print(f"Error loading {filepath}: {e}")
+#         else:
+#             print(f"Warning: Data file not found at '{filepath}'. Skipping.")
+
+#     if not all_dfs:
+#         raise FileNotFoundError("No valid data files were found. Please check the 'results' directory.")
+
+#     # Combine all loaded data into one big dataframe
+#     full_df = pd.concat(all_dfs, ignore_index=True)
+
+#     # --- Standardize method names for consistent plotting ---
+#     # This ensures that different names from different files are treated as the same method.
+#     method_name_map = {
+#         'rbpf_gp': 'rbpf_ca',           # Map 'rbpf_gp' to the key used in our dictionaries
+#         'mmse_dfe_ca': 'mmse_dfe_ca_ldpc' # Unify coded DFE names
+#     }
+#     full_df['method'] = full_df['method'].replace(method_name_map)
+    
+#     # Clean up any rows with missing essential data
+#     full_df.dropna(subset=['method', 'snr_db', 'channel'], inplace=True)
+    
+#     return full_df
+
+
+# if __name__ == "__main__":
+#     parser = argparse.ArgumentParser(description="Plot results from simulation sweeps.")
+#     parser.add_argument('--results_dir', type=str, default='results', help='Directory containing CSV result files.')
+#     parser.add_argument('--output_dir', type=str, default='figures', help='Directory to save plot images.')
+#     args = parser.parse_args()
+
+#     os.makedirs(args.output_dir, exist_ok=True)
+    
+#     # Load and process the data from the specific CSV files
+#     df = load_and_prepare_data(args.results_dir)
+    
+#     # Get the unique channel names found in the data
+#     channels = df['channel'].unique()
+    
+#     print("\n--- Generating Plots ---")
+#     print(f"Found data for channels: {list(channels)}")
+
+#     # Generate a separate plot for each channel
+#     for channel in channels:
+#         plot_snr_curves(df, channel, args.output_dir)
+
+
 import os
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 import argparse
 
-# Helper function to safely calculate mean, ignoring non-numeric types
 def robust_mean(series):
-    return pd.to_numeric(series, errors='coerce').mean()
-
-def plot_snr_curves(df, channel, output_dir="figures"):
-    """Generates and saves BER vs. SNR plots for a given channel."""
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(10, 7))
-
-    # Map method names for the legend
-    method_map = {
-        'trivial': 'Trivial (No EQ)',
-        'mmse_le': 'MMSE-LE',
-        'mlsd': 'MLSD (Viterbi)',
-        'mmse_dfe': 'MMSE-DFE',
-        'mmse_dfe_ca_ldpc': 'MMSE-DFE-CA (LDPC)',
-        'rbpf_ca': 'RBPF-GP-CA (Proposed)'
-    }
-
-    # Identify the correct BER column for each method
-    ber_cols = {
-        'trivial': 'ber',
-        'mmse_le': 'ber',
-        'mlsd': 'ber',
-        'mmse_dfe': 'ber_dd', # Decision-directed BER
-        'mmse_dfe_ca_ldpc': 'msg_ber', # Message BER
-        'rbpf_ca': 'ber' # Message BER from RBPF sweeps
-    }
-
-    df_channel = df[df['channel'].str.upper() == channel.upper()]
-    if df_channel.empty:
-        print(f"No data found for channel '{channel}'. Skipping SNR curve plot.")
-        return
-
-    for method, display_name in method_map.items():
-        if method not in df_channel['method'].unique():
-            continue
-
-        ber_col = ber_cols.get(method, 'ber') 
-        method_df = df_channel[df_channel['method'] == method]
-        
-        # Group by SNR and calculate mean BER
-        grouped = method_df.groupby('snr_db')[ber_col].apply(robust_mean).reset_index()
-        grouped = grouped.dropna()
-
-        if not grouped.empty:
-            ax.semilogy(grouped['snr_db'], grouped[ber_col], 'o-', label=display_name)
-
-    ax.set_xlabel("SNR (Es/N0) [dB]")
-    ax.set_ylabel("Bit Error Rate (BER)")
-    ax.set_title(f"Equalizer Performance on {channel.upper()} Channel")
-    ax.legend()
-    ax.set_ylim(bottom=1e-6)
-    ax.grid(True, which='both', linestyle='--')
-    
-    filename = f"ber_vs_snr_{channel.lower()}.png"
-    plt.savefig(os.path.join(output_dir, filename), dpi=300)
-    print(f"Saved SNR curve plot to {os.path.join(output_dir, filename)}")
-    plt.close()
+    """Helper function to safely calculate mean, ignoring non-numeric types."""
+    # Convert to numeric, coercing errors will turn non-numbers into NaN
+    numeric_series = pd.to_numeric(series, errors='coerce')
+    # The mean function will automatically skip NaN values
+    return numeric_series.mean()
 
 def plot_method_comparison(df, channel, snr, output_dir="figures"):
-    """Generates and saves a bar chart comparing methods at a specific SNR and channel."""
+    """
+    Generates and saves a bar chart comparing methods at a specific SNR and channel,
+    matching the user-provided example image.
+    """
     plt.style.use('seaborn-v0_8-whitegrid')
     fig, ax = plt.subplots(figsize=(12, 7))
 
+    # --- Method names for the plot legend ---
+    # The keys here are the standardized names we create in load_and_prepare_data
     method_map = {
         'trivial': 'Trivial',
         'mmse_le': 'MMSE-LE',
         'mlsd': 'MLSD',
         'mmse_dfe': 'MMSE-DFE',
         'mmse_dfe_ca_ldpc': 'MMSE-DFE-CA',
-        'rbpf_gp': 'RBPF-GP-CA'
+        'rbpf_ca': 'RBPF-GP (Proposed)' # Standardized name
     }
+    
+    # --- Which column contains the relevant BER for each method ---
     ber_cols = {
-        'trivial': 'ber', 'mmse_le': 'ber', 'mlsd': 'ber', 'mmse_dfe': 'ber_dd',
-        'mmse_dfe_ca_ldpc': 'msg_ber', 'rbpf_ca': 'ber'
+        'trivial': 'ber',
+        'mmse_le': 'ber',
+        'mlsd': 'ber',
+        'mmse_dfe': 'ber_dd',
+        'mmse_dfe_ca_ldpc': 'msg_ber',
+        'rbpf_ca': 'ber'
     }
 
-    df_filtered = df[(df['channel'].str.upper() == channel.upper()) & (df['snr_db'] == snr)]
+    # Filter data for the specific channel and SNR
+    df_filtered = df[(df['channel'] == channel) & (df['snr_db'] == snr)]
     if df_filtered.empty:
         print(f"No data for channel '{channel}' at SNR={snr}dB. Skipping bar chart.")
         return
 
+    # Get the methods that are actually present in the data for this slice
     methods_present = sorted([m for m in method_map.keys() if m in df_filtered['method'].unique()])
     display_names = [method_map[m] for m in methods_present]
     mean_bers = []
     
+    # Calculate the mean BER for each method
     for method in methods_present:
-        ber_col = ber_cols.get(method, 'ber') 
+        ber_col = ber_cols.get(method, 'ber')
         ber_val = robust_mean(df_filtered[df_filtered['method'] == method][ber_col])
         mean_bers.append(ber_val)
 
+    # Plot the bars
     bars = ax.bar(display_names, mean_bers, color=plt.cm.viridis(np.linspace(0.1, 0.9, len(display_names))))
 
+    # --- Formatting to match the example ---
     ax.set_yscale('log')
-    ax.set_ylabel("Mean Bit Error Rate (BER)")
-    ax.set_title(f"Method Comparison on {channel.upper()} Channel at {snr} dB")
-    ax.set_xticklabels(display_names, rotation=45, ha="right")
-    ax.set_ylim(bottom=1e-6)
+    ax.set_ylabel("Mean Bit Error Rate (BER)", fontsize=14)
+    ax.set_title(f"Method Comparison on {channel.upper()} Channel at {snr:.1f} dB", fontsize=16)
+    plt.xticks(rotation=45, ha="right", fontsize=12)
+    plt.yticks(fontsize=12)
+    ax.set_ylim(bottom=1e-6) # Set a floor for the y-axis
 
-    # Add BER values on top of bars
+    # Add BER values on top of each bar
     for bar in bars:
         yval = bar.get_height()
         if yval > 0 and not np.isnan(yval):
-            ax.text(bar.get_x() + bar.get_width()/2.0, yval * 1.2, f'{yval:.2e}', ha='center', va='bottom')
+            ax.text(bar.get_x() + bar.get_width()/2.0, yval * 1.1, f'{yval:.2e}', ha='center', va='bottom', fontsize=11)
 
     plt.tight_layout()
-    filename = f"method_comparison_{channel.lower()}_{snr}db.png"
+    
+    # Save the figure with a descriptive name
+    filename = f"method_comparison_{channel.lower()}_{int(snr)}db.png"
     plt.savefig(os.path.join(output_dir, filename), dpi=300)
-    print(f"Saved method comparison plot to {os.path.join(output_dir, filename)}")
+    print(f"Saved bar chart to {os.path.join(output_dir, filename)}")
     plt.close()
 
 
-def load_all_data(results_dir="results"):
-    """Loads and concatenates all relevant CSV files from the results directory."""
+def load_and_prepare_data(results_dir="results"):
+    """
+    Loads the two specific original CSV files, assigns the correct channel name to each,
+    and combines them into a single, clean dataframe.
+    """
+    file_channel_map = {
+        'snr_sweep.csv': 'PR1D',
+        'snr_sweep_ldpc.csv': 'TV_AR1'
+    }
+    
     all_dfs = []
-
-    # Load data from the general SNR sweep
-    snr_sweep_file = os.path.join(results_dir, "snr_sweep_ldpc.csv")
-    if os.path.exists(snr_sweep_file):
-        df_snr = pd.read_csv(snr_sweep_file)
-        if 'channel' not in df_snr.columns:
-            df_snr['channel'] = 'TV_AR1' # Assume default if missing
-        all_dfs.append(df_snr)
-        print(f"Loaded {snr_sweep_file}")
-
-    # Load data from the RBPF-GP sweeps
-    for filename in os.listdir(results_dir):
-        if "rbpf" in filename and filename.endswith("rbpf_gp_seed_sweep.csv"):
-            filepath = os.path.join(results_dir, filename)
+    
+    for filename, channel_name in file_channel_map.items():
+        filepath = os.path.join(results_dir, filename)
+        if os.path.exists(filepath):
             try:
-                df_rbpf = pd.read_csv(filepath, comment='#')
-                if 'ch' in df_rbpf.columns:
-                    df_rbpf = df_rbpf.rename(columns={'ch': 'channel'})
-                df_rbpf['method'] = 'rbpf_ca'
-                all_dfs.append(df_rbpf)
-                print(f"Loaded {filepath}")
+                df = pd.read_csv(filepath)
+                df['channel'] = channel_name
+                all_dfs.append(df)
+                print(f"Successfully loaded '{filepath}' and assigned to channel '{channel_name}'")
             except Exception as e:
-                print(f"Could not read {filepath}: {e}")
+                print(f"Error loading {filepath}: {e}")
+        else:
+            print(f"Warning: Data file not found at '{filepath}'. Skipping.")
 
     if not all_dfs:
-        raise FileNotFoundError("No CSV result files found in the 'results' directory.")
+        raise FileNotFoundError("No valid data files were found. Please check the 'results' directory.")
 
     full_df = pd.concat(all_dfs, ignore_index=True)
-    essential_cols = ['method', 'snr_db', 'channel']
-    full_df.dropna(subset=essential_cols, inplace=True)
 
-    if 'channel' in full_df.columns:
-        full_df['channel'] = full_df['channel'].str.upper()
+    # --- Standardize method names for consistent plotting ---
+    method_name_map = {
+        'rbpf_gp': 'rbpf_ca',           # Standardize to 'rbpf_ca'
+        'mmse_dfe_ca': 'mmse_dfe_ca_ldpc' # Standardize to the longer name
+    }
+    full_df['method'] = full_df['method'].replace(method_name_map)
+    
+    full_df.dropna(subset=['method', 'snr_db', 'channel'], inplace=True)
     
     return full_df
 
@@ -165,21 +268,17 @@ if __name__ == "__main__":
 
     os.makedirs(args.output_dir, exist_ok=True)
     
-    df = load_all_data(args.results_dir)
+    df = load_and_prepare_data(args.results_dir)
 
-    # ---- CHANGED: Filter lists to remove any remaining nan/non-string values ----
-    channels = [ch for ch in df['channel'].unique() if isinstance(ch, str)]
-    snrs = sorted([s for s in df['snr_db'].unique() if not np.isnan(s)])
-    # --------------------------------------------------------------------------
+    channels = sorted(df['channel'].unique())
+    snrs = sorted(df['snr_db'].unique())
     
-    print("\n--- Generating Plots ---")
-    print(f"Found Channels: {channels}")
-    print(f"Found SNRs: {snrs}")
+    print("\n--- Generating Bar Chart Comparisons ---")
+    print(f"Found data for channels: {channels}")
+    print(f"Found data for SNRs: {snrs}")
 
-    for channel in channels:
-        plot_snr_curves(df, channel, args.output_dir)
-
+    # --- Main Loop to Generate All 18 Plots ---
     for channel in channels:
         for snr in snrs:
-            if snr == int(snr):
-                plot_method_comparison(df, channel, snr, args.output_dir)
+            # We removed the 'if snr == int(snr)' to plot for all values
+            plot_method_comparison(df, channel, snr, args.output_dir)

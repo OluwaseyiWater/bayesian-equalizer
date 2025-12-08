@@ -16,6 +16,8 @@ from utils.llr import qpsk_llrs, soft_symbol_from_llrs
 from utils.interleave import make_block_interleaver, interleave, deinterleave
 from channel_codes.ldpc_jax import LDPCJAX as LDPCCode
 from channel_codes.ldpc_jax import LLR_MAX
+import channels.time_varying as chtv
+import channels.linear_isi as chlin
 
 
 SNRs   = list(range(4, 13))  
